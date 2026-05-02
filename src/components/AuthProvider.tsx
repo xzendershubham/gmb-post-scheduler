@@ -6,7 +6,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile
 } from 'firebase/auth';
-import { auth, signInWithGoogle as firebaseSignInWithGoogle, logout as firebaseLogout } from '../lib/firebase';
+import { auth, signInWithGoogle as firebaseSignInWithGoogle, logout as firebaseLogout, getRedirectResult } from '../lib/firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -30,6 +30,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Handle Google redirect result (used on production/Vercel)
+  useEffect(() => {
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        setUser(result.user);
+      }
+    }).catch((error) => {
+      console.error('Redirect result error:', error);
+    });
   }, []);
 
   const signInWithGoogle = async () => {
