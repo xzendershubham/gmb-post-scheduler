@@ -1,0 +1,6 @@
+{
+  "name": "PostPilot: GMB Scheduler",
+  "description": "A high-end SaaS dashboard for scheduling and managing Google Business Profile posts with AI-powered assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["auth", "database", "ai"]
+}

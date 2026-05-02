@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "Post": {
+      "title": "GMB Post",
+      "description": "A scheduled post for Google Business Profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "summary": { "type": "string", "description": "Post content" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "ctaType": { "type": "string", "enum": ["LEARN_MORE", "BOOK", "ORDER", "SHOP", "SIGN_UP", "CALL"] },
+        "ctaUrl": { "type": "string", "format": "uri" },
+        "scheduledAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["SCHEDULED", "PUBLISHED", "FAILED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "summary", "scheduledAt", "status"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Extended user information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "posts/{postId}": {
+      "schema": "Post",
+      "description": "Collection of scheduled posts"
+    },
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents"
+    }
+  }
+}
