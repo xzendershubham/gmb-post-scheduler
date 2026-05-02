@@ -233,7 +233,7 @@ function AppContent() {
             setEditingPost(null);
             setActiveTab('dashboard');
           }}
-        /
+        
       );
     }
 
