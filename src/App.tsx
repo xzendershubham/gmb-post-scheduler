@@ -223,6 +223,7 @@ function AppContent() {
   }
 
   const renderContent = () => {
+    if (editingPost) {
       return (
         <PostComposer 
           key={editingPost?.id || 'edit'}
