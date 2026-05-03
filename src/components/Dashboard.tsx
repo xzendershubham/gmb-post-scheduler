@@ -1,21 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  TrendingUp, 
-  Users, 
-  MousePointer2, 
+import {
+  TrendingUp,
   Clock,
-  ExternalLink,
   Sparkles,
-  LayoutDashboard
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { useAuth } from './AuthProvider';
 import { db } from '../lib/firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { format } from 'date-fns';
+import { collection, query, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { format, formatDistanceToNow } from 'date-fns';
 
 export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post: any) => void, selectedAccountId: string }) {
   const { user } = useAuth();
@@ -79,41 +78,85 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
              ) : pipelinePosts.length > 0 ? (
                <div className="space-y-4">
                  {pipelinePosts.map((post) => (
-                   <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    key={post.id} 
-                    className="group bg-[#020617]/50 border border-slate-800/50 p-6 rounded-2xl flex items-center justify-between hover:border-blue-500/30 transition-all shadow-inner"
-                   >
-                     <div className="flex items-center gap-6">
-                        <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">
-                           {post.postType === 'EVENT' ? <Sparkles className="w-5 h-5 text-purple-500" /> : <Clock className="w-5 h-5 text-blue-500" />}
-                        </div>
-                        <div className="space-y-1">
-                           <div className="flex items-center gap-3">
-                              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{post.postType}</span>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest opacity-40">|</span>
-                              <span className="text-[10px] font-bold text-white uppercase tracking-widest">{post.accountName || 'No Account'}</span>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest opacity-40">|</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{post.scheduledAt ? format(new Date(post.scheduledAt), 'MMM dd, HH:mm') : 'Unscheduled'}</span>
-                           </div>
-                           <h4 className="text-sm font-bold text-white tracking-tight line-clamp-1">{post.summary}</h4>
-                        </div>
-                     </div>
-                     <div className="flex items-center gap-4">
-                        <div className="px-3 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-[8px] font-black uppercase tracking-widest">
-                           {post.status}
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => onEditPost(post)}
-                          className="h-9 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-[10px] uppercase tracking-widest transition-all"
-                        >
-                          Modify
-                        </Button>
-                     </div>
-                   </motion.div>
+                    <motion.div
+                     initial={{ opacity: 0, y: 10 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     key={post.id}
+                     className={cn(
+                       "group bg-[#020617]/50 border p-6 rounded-2xl flex items-center justify-between hover:border-blue-500/30 transition-all shadow-inner",
+                       post.status === 'PUBLISHED' ? 'border-emerald-500/20' :
+                       post.status === 'FAILED' ? 'border-red-500/20' :
+                       'border-slate-800/50'
+                     )}
+                    >
+                      <div className="flex items-center gap-6">
+                         <div className={cn(
+                           "w-12 h-12 rounded-xl border flex items-center justify-center shrink-0",
+                           post.status === 'PUBLISHED' ? 'bg-emerald-500/10 border-emerald-500/20' :
+                           post.status === 'FAILED' ? 'bg-red-500/10 border-red-500/20' :
+                           'bg-slate-900 border-slate-800'
+                         )}>
+                            {post.status === 'PUBLISHED' ? (
+                              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                            ) : post.status === 'FAILED' ? (
+                              <XCircle className="w-5 h-5 text-red-400" />
+                            ) : post.postType === 'EVENT' ? (
+                              <Sparkles className="w-5 h-5 text-purple-500" />
+                            ) : (
+                              <Clock className="w-5 h-5 text-blue-500" />
+                            )}
+                         </div>
+                         <div className="space-y-1">
+                            <div className="flex items-center gap-3 flex-wrap">
+                               <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{post.postType}</span>
+                               <span className="text-[10px] font-bold text-slate-500 uppercase opacity-40">|</span>
+                               <span className="text-[10px] font-bold text-white uppercase tracking-widest">{post.accountName || 'No Account'}</span>
+                               <span className="text-[10px] font-bold text-slate-500 uppercase opacity-40">|</span>
+                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                 {post.scheduledAt ? format(new Date(post.scheduledAt), 'MMM dd, HH:mm') : 'Unscheduled'}
+                               </span>
+                            </div>
+                            <h4 className="text-sm font-bold text-white tracking-tight line-clamp-1">{post.summary}</h4>
+                            {post.status === 'FAILED' && post.publishError && (
+                              <p className="text-[10px] text-red-400 font-medium line-clamp-2 max-w-md mt-1">
+                                ⚠ {post.publishError}
+                              </p>
+                            )}
+                            {post.status === 'PUBLISHED' && post.publishedAt && (
+                              <p className="text-[10px] text-emerald-400 font-bold">
+                                Published {formatDistanceToNow(new Date(post.publishedAt?.toDate?.() || post.publishedAt), { addSuffix: true })}
+                              </p>
+                            )}
+                         </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                         <div className={cn(
+                           "px-3 py-1 rounded-full border text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5",
+                           post.status === 'PUBLISHED'
+                             ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                             : post.status === 'FAILED'
+                             ? 'border-red-500/30 bg-red-500/10 text-red-400'
+                             : 'border-blue-500/20 bg-blue-500/5 text-blue-400'
+                         )}>
+                            <div className={cn(
+                              "w-1.5 h-1.5 rounded-full",
+                              post.status === 'PUBLISHED' ? 'bg-emerald-400 animate-pulse' :
+                              post.status === 'FAILED' ? 'bg-red-400' : 'bg-blue-400 animate-pulse'
+                            )} />
+                            {post.status}
+                         </div>
+                         {post.status !== 'PUBLISHED' && (
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             onClick={() => onEditPost(post)}
+                             className="h-9 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-[10px] uppercase tracking-widest transition-all"
+                           >
+                             Edit
+                           </Button>
+                         )}
+                      </div>
+                    </motion.div>
                  ))}
                </div>
              ) : (
