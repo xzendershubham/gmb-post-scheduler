@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { updateProfile } from 'firebase/auth';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import { MainLayout } from './components/MainLayout';
 import { Dashboard } from './components/Dashboard';
@@ -17,7 +18,9 @@ function AppContent() {
   const [editingPost, setEditingPost] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const authMode = React.useRef<'login' | 'signup'>('login');
   const [authLoading, setAuthLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -28,6 +31,9 @@ function AppContent() {
     if (!user) {
       setEmail('');
       setPassword('');
+      setDisplayName('');
+      setMode('login');
+      authMode.current = 'login';
       setErrorMessage(null);
       setSuccessMessage(null);
       setSelectedAccountId('all');
@@ -39,12 +45,18 @@ function AppContent() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
+    // Read from ref to always get the current mode (avoids stale closure)
+    const currentMode = authMode.current;
     setAuthLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      if (mode === 'signup') {
-        await signUpWithEmail(email, password);
+      if (currentMode === 'signup') {
+        const result = await signUpWithEmail(email, password);
+        // Optionally update display name
+        if (displayName && result?.user) {
+          await updateProfile(result.user, { displayName });
+        }
         setSuccessMessage('Account created! You are now logged in.');
       } else {
         await signInWithEmail(email, password);
@@ -53,10 +65,13 @@ function AppContent() {
       const code = err?.code || '';
       let msg = 'Authentication failed. Please try again.';
       if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
-        msg = 'Wrong email or password. If you don\'t have an account, click "Create Account" below.';
+        msg = currentMode === 'login'
+          ? 'Wrong email or password. Please check your credentials and try again.'
+          : 'Authentication failed. Please try again.';
       } else if (code === 'auth/email-already-in-use') {
-        msg = 'An account with this email already exists. Please sign in instead.';
+        msg = 'An account with this email already exists. Click "Already have an account? Sign In" to log in.';
         setMode('login');
+        authMode.current = 'login';
       } else if (code === 'auth/weak-password') {
         msg = 'Password must be at least 6 characters.';
       } else if (code === 'auth/invalid-email') {
@@ -114,9 +129,10 @@ function AppContent() {
           </div>
 
           <motion.form 
-            key="auth-form"
-            initial={{ opacity: 0, y: 20 }}
+            key={`auth-form-${mode}`}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
             onSubmit={handleAuth} 
             className="space-y-4"
           >
@@ -138,6 +154,21 @@ function AppContent() {
                 {errorMessage}
               </motion.div>
             )}
+            {mode === 'signup' && (
+              <div className="space-y-2">
+                <Label className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Full Name (Optional)</Label>
+                <div className="relative">
+                  <ArrowRight className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <Input 
+                    type="text" 
+                    placeholder="Your Name" 
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="bg-[#020617]/50 border-slate-800 h-14 pl-12 rounded-2xl text-white focus:ring-1 focus:ring-blue-500/30"
+                  />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Email Address</Label>
               <div className="relative">
@@ -149,6 +180,7 @@ function AppContent() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="bg-[#020617]/50 border-slate-800 h-14 pl-12 rounded-2xl text-white focus:ring-1 focus:ring-blue-500/30"
                   required
+                  autoComplete={mode === 'login' ? 'email' : 'new-email'}
                 />
               </div>
             </div>
@@ -158,11 +190,12 @@ function AppContent() {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <Input 
                   type={showPassword ? 'text' : 'password'} 
-                  placeholder="••••••••" 
+                  placeholder={mode === 'signup' ? 'Min. 6 characters' : '••••••••'} 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-[#020617]/50 border-slate-800 h-14 pl-12 pr-12 rounded-2xl text-white focus:ring-1 focus:ring-blue-500/30"
                   required
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 />
                 <button
                   type="button"
@@ -178,18 +211,21 @@ function AppContent() {
               disabled={authLoading}
               className="w-full h-14 accent-gradient text-white font-black text-xs uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-blue-500/20 border-none transition-all hover:scale-[1.01] active:scale-[0.98]"
             >
-              {authLoading ? 'Verifying...' : mode === 'login' ? 'Sign In' : 'Create Account'}
+              {authLoading ? 'Verifying...' : mode === 'login' ? '🔓 Sign In' : '✨ Create Account'}
             </Button>
             <button 
               type="button"
               onClick={() => {
-                setMode(mode === 'login' ? 'signup' : 'login');
+                const newMode = mode === 'login' ? 'signup' : 'login';
+                setMode(newMode);
+                authMode.current = newMode;
                 setErrorMessage(null);
                 setSuccessMessage(null);
+                setPassword('');
               }}
               className="w-full text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-blue-400 transition-colors"
             >
-              {mode === 'login' ? 'New user? Create Account' : 'Already have an account? Sign In'}
+              {mode === 'login' ? '✦ New here? Create an Account' : '← Already have an account? Sign In'}
             </button>
           </motion.form>
 
