@@ -83,11 +83,12 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
       setSelectedFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
+        // Only use base64 for PREVIEW - never save to Firestore
         setImagePreview(reader.result as string);
-        // We still set this for the preview, but we'll prioritize the uploaded URL in handleSubmit
-        setFormData(f => ({ ...f, imageUrl: reader.result as string }));
       };
       reader.readAsDataURL(file);
+      // Clear any previously typed URL since we have a file now
+      setFormData(f => ({ ...f, imageUrl: '' }));
     }
   };
 
@@ -112,7 +113,7 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
       const startTime = createSafeISO(formData.startDate, formData.startTime);
       const endTime = createSafeISO(formData.endDate, formData.endTime);
 
-      let finalImageUrl = formData.imageUrl;
+      let finalImageUrl = '';
 
       // Handle file upload if a new file was selected
       if (selectedFile) {
@@ -120,13 +121,22 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
           const fileExtension = selectedFile.name.split('.').pop();
           const fileName = `${Date.now()}.${fileExtension}`;
           const storageRef = ref(storage, `posts/${user.uid}/${fileName}`);
-          
           const snapshot = await uploadBytes(storageRef, selectedFile);
           finalImageUrl = await getDownloadURL(snapshot.ref);
         } catch (uploadError: any) {
-          console.error('Upload failed:', uploadError);
-          throw new Error('Failed to upload image to storage: ' + uploadError.message);
+          console.error('Storage upload failed:', uploadError);
+          // Don't block post creation if image upload fails
+          // Show warning but continue without image
+          if (uploadError?.code === 'storage/unauthorized') {
+            alert('Image upload permission denied. Please check Firebase Storage rules. The post will be saved without the image.');
+          } else {
+            alert('Image upload failed: ' + (uploadError?.message || 'Unknown error') + '. Saving post without image.');
+          }
+          finalImageUrl = '';
         }
+      } else if (formData.imageUrl && !formData.imageUrl.startsWith('data:')) {
+        // Only use URL if it's a real URL (not base64)
+        finalImageUrl = formData.imageUrl;
       }
 
       const selectedAccount = accounts.find(a => a.id === formData.accountId);
