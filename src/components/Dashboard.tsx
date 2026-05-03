@@ -19,24 +19,22 @@ import { format } from 'date-fns';
 
 export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post: any) => void, selectedAccountId: string }) {
   const { user } = useAuth();
-  const [pipelinePosts, setPipelinePosts] = useState<any[]>([]);
+  const [allPosts, setAllPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Derived: filter client-side by selected account
+  const pipelinePosts = allPosts
+    .filter(p => selectedAccountId === 'all' || p.accountId === selectedAccountId)
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
   useEffect(() => {
     if (!user) return;
+    setLoading(true);
 
-    const baseQuery = [
-      collection(db, 'posts'),
-      where('userId', '==', user.uid),
-    ];
-
-    if (selectedAccountId && selectedAccountId !== 'all') {
-      baseQuery.push(where('accountId', '==', selectedAccountId));
-    }
-
+    // Simple query by userId only - no composite index needed
     const q = query(
-      ...(baseQuery as [any, ...any[]]),
-      orderBy('scheduledAt', 'asc')
+      collection(db, 'posts'),
+      where('userId', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -44,7 +42,7 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
         id: doc.id,
         ...doc.data()
       }));
-      setPipelinePosts(posts);
+      setAllPosts(posts);
       setLoading(false);
     }, (error) => {
       console.error('Firestore subscription error:', error);
@@ -52,7 +50,7 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user]); // selectedAccountId filtering is done client-side
 
   return (
     <div className="space-y-10">

@@ -36,35 +36,38 @@ interface ScheduledPost {
   imageUrl?: string;
   status: string;
   postType: string;
+  accountId?: string;
+  accountName?: string;
 }
 
 export function Calendar({ onEditPost, selectedAccountId }: { onEditPost: (post: any) => void, selectedAccountId: string }) {
   const { user } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [posts, setPosts] = useState<ScheduledPost[]>([]);
+  const [allPosts, setAllPosts] = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Filter client-side by selected account
+  const posts = allPosts.filter(
+    p => selectedAccountId === 'all' || p.accountId === selectedAccountId
+  );
 
   useEffect(() => {
     if (!user) return;
+    setLoading(true);
 
-    const baseQuery = [
+    // Simple query by userId only - no composite index needed
+    const q = query(
       collection(db, 'posts'),
       where('userId', '==', user.uid)
-    ];
-
-    if (selectedAccountId && selectedAccountId !== 'all') {
-      baseQuery.push(where('accountId', '==', selectedAccountId));
-    }
-
-    const q = query(...(baseQuery as [any, ...any[]]));
+    );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as ScheduledPost[];
-      setPosts(fetchedPosts);
+      setAllPosts(fetchedPosts);
       setLoading(false);
     }, (error) => {
       console.error('Firestore subscription error:', error);
@@ -72,7 +75,7 @@ export function Calendar({ onEditPost, selectedAccountId }: { onEditPost: (post:
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user]); // selectedAccountId filtering is client-side
 
   const renderHeader = () => {
     return (
