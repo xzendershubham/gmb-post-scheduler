@@ -23,10 +23,37 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from './AuthProvider';
+
+// Compress image to safe size for Firestore (<200KB base64)
+function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas not supported'));
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 type PostType = 'STANDARD' | 'EVENT' | 'OFFER';
 type ActionType = 'LEARN_MORE' | 'BOOK' | 'ORDER' | 'SHOP' | 'SIGN_UP' | 'CALL';
@@ -83,11 +110,10 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
       setSelectedFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        // Only use base64 for PREVIEW - never save to Firestore
+        // Only use base64 for PREVIEW
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
-      // Clear any previously typed URL since we have a file now
       setFormData(f => ({ ...f, imageUrl: '' }));
     }
   };
@@ -115,23 +141,15 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
 
       let finalImageUrl = '';
 
-      // Handle file upload if a new file was selected
+      // Compress image client-side and store as small base64
       if (selectedFile) {
         try {
-          const fileExtension = selectedFile.name.split('.').pop();
-          const fileName = `${Date.now()}.${fileExtension}`;
-          const storageRef = ref(storage, `posts/${user.uid}/${fileName}`);
-          const snapshot = await uploadBytes(storageRef, selectedFile);
-          finalImageUrl = await getDownloadURL(snapshot.ref);
-        } catch (uploadError: any) {
-          console.error('Storage upload failed:', uploadError);
-          // Don't block post creation if image upload fails
-          // Show warning but continue without image
-          if (uploadError?.code === 'storage/unauthorized') {
-            alert('Image upload permission denied. Please check Firebase Storage rules. The post will be saved without the image.');
-          } else {
-            alert('Image upload failed: ' + (uploadError?.message || 'Unknown error') + '. Saving post without image.');
-          }
+          const compressed = await compressImage(selectedFile, 800, 0.7);
+          // Compressed JPEG should be well under 200KB - safe for Firestore
+          finalImageUrl = compressed;
+        } catch (compressError) {
+          console.error('Image compression failed:', compressError);
+          // Continue without image
           finalImageUrl = '';
         }
       } else if (formData.imageUrl && !formData.imageUrl.startsWith('data:')) {
