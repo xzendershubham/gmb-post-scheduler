@@ -32,27 +32,29 @@ function AppContent() {
     setSuccessMessage(null);
     try {
       if (mode === 'signup') {
-        const result = await signUpWithEmail(email, password);
-        // Firebase Auth automatically logs the user in after signup if configured,
-        // or we can show a success message.
-        if (result.user) {
-          setSuccessMessage('Account created successfully!');
-          // The onAuthStateChanged listener in AuthProvider will pick this up
-        }
+        await signUpWithEmail(email, password);
+        setSuccessMessage('Account created! You are now logged in.');
       } else {
         await signInWithEmail(email, password);
       }
     } catch (err: any) {
-      let msg = err.message || 'Authentication failed';
-      if (msg.includes('Invalid login credentials') && mode === 'login') {
-        msg = 'Login rejected. Please check your email and password.';
-      }
-      if (msg.includes('Email not confirmed')) {
-        msg = 'Account pending verification. Please confirm your email to activate the sync profile.';
-      }
-      if (msg.includes('User already registered') && mode === 'signup') {
-        msg = 'Identity profile already exists. Switching to login mode.';
+      const code = err?.code || '';
+      let msg = 'Authentication failed. Please try again.';
+      if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+        msg = 'Wrong email or password. If you don\'t have an account, click "Create Account" below.';
+      } else if (code === 'auth/email-already-in-use') {
+        msg = 'An account with this email already exists. Please sign in instead.';
         setMode('login');
+      } else if (code === 'auth/weak-password') {
+        msg = 'Password must be at least 6 characters.';
+      } else if (code === 'auth/invalid-email') {
+        msg = 'Please enter a valid email address.';
+      } else if (code === 'auth/too-many-requests') {
+        msg = 'Too many attempts. Please wait a few minutes and try again.';
+      } else if (code === 'auth/operation-not-allowed') {
+        msg = 'Email/Password sign-in is not enabled. Please contact support.';
+      } else if (err?.message) {
+        msg = err.message;
       }
       setErrorMessage(msg);
     } finally {
@@ -190,7 +192,18 @@ function AppContent() {
 
           <div className="space-y-4">
              <Button 
-                onClick={signInWithGoogle}
+                onClick={async () => {
+                  setErrorMessage(null);
+                  try {
+                    await signInWithGoogle();
+                  } catch (err: any) {
+                    const code = err?.code || '';
+                    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+                      return; // User closed popup, not an error
+                    }
+                    setErrorMessage(err?.message || 'Google sign-in failed. Please try again.');
+                  }
+                }}
                 type="button"
                 className="w-full h-14 bg-white hover:bg-slate-100 text-slate-900 font-bold rounded-2xl flex items-center justify-center gap-3 shadow-xl transition-all hover:scale-[1.01]"
              >
