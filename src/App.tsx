@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import { MainLayout } from './components/MainLayout';
 import { Dashboard } from './components/Dashboard';
@@ -23,6 +23,18 @@ function AppContent() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState('all');
+
+  useEffect(() => {
+    if (!user) {
+      setEmail('');
+      setPassword('');
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      setSelectedAccountId('all');
+      setActiveTab('dashboard');
+      setEditingPost(null);
+    }
+  }, [user]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
