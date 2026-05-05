@@ -126,7 +126,16 @@ export function Calendar({ onEditPost, selectedAccountId }: { onEditPost: (post:
     return (
       <div className="grid grid-cols-7 border-l border-t border-white/5">
         {calendarDays.map((date, i) => {
-          const dayPosts = posts.filter(post => post.scheduledAt && isSameDay(new Date(post.scheduledAt), date));
+          const dayPosts = posts.filter(post => {
+            if (!post.scheduledAt) return false;
+            try {
+              const postDate = new Date(post.scheduledAt);
+              if (isNaN(postDate.getTime())) return false;
+              return isSameDay(postDate, date);
+            } catch (e) {
+              return false;
+            }
+          });
           const isSelected = isSameDay(date, selectedDate);
           const isCurrentMonth = isSameMonth(date, monthStart);
 

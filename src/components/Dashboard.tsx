@@ -158,11 +158,19 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
                                 ⚠ {post.publishError}
                               </p>
                             )}
-                            {post.status === 'PUBLISHED' && post.publishedAt && (
-                              <p className="text-[10px] text-emerald-400 font-bold">
-                                Published {formatDistanceToNow(new Date(post.publishedAt?.toDate?.() || post.publishedAt), { addSuffix: true })}
-                              </p>
-                            )}
+                            {post.status === 'PUBLISHED' && post.publishedAt && (() => {
+                              try {
+                                const date = new Date(post.publishedAt?.toDate?.() || post.publishedAt);
+                                if (isNaN(date.getTime())) return null;
+                                return (
+                                  <p className="text-[10px] text-emerald-400 font-bold">
+                                    Published {formatDistanceToNow(date, { addSuffix: true })}
+                                  </p>
+                                );
+                              } catch (e) {
+                                return null;
+                              }
+                            })()}
                          </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
