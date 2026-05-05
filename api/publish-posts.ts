@@ -1,12 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 // ─── Firebase Admin Init ────────────────────────────────────────────────────
 function initAdmin() {
   if (admin.apps.length > 0) return;
   const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY env var not set');
-  admin.initializeApp({ credential: admin.credential.cert(JSON.parse(key)) });
+  try {
+    admin.initializeApp({ credential: admin.credential.cert(JSON.parse(key)) });
+  } catch (err) {
+    console.error('Firebase Admin init failed:', err);
+    throw err;
+  }
 }
 
 // ─── Token Refresh ──────────────────────────────────────────────────────────
@@ -111,13 +117,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  initAdmin();
-  const db = admin.firestore();
-  const now = new Date().toISOString();
-
-  const results = { published: 0, failed: 0, skipped: 0, errors: [] as string[] };
-
   try {
+    initAdmin();
+    const db = getFirestore();
+    const now = new Date().toISOString();
+
+    const results = { published: 0, failed: 0, skipped: 0, errors: [] as string[] };
+
     // Query all SCHEDULED posts that are due (scheduledAt <= now)
     let queryRef = db.collection('posts').where('status', '==', 'SCHEDULED');
     
@@ -170,7 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Mark as published
         await postRef.update({
           status: 'PUBLISHED',
-          publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+          publishedAt: FieldValue.serverTimestamp(),
           gmbPostName: gmbResult.name || null,
           publishError: null,
         });
