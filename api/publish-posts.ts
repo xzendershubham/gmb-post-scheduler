@@ -119,7 +119,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     initAdmin();
-    const db = getFirestore();
+    const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
+    const db = getFirestore(firestoreDbId);
     const now = new Date().toISOString();
 
     const results = { published: 0, failed: 0, skipped: 0, errors: [] as string[] };

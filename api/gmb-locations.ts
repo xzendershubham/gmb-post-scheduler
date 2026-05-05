@@ -9,7 +9,8 @@ function initAdmin() {
 
 async function getValidAccessToken(userId: string): Promise<string | null> {
   initAdmin();
-  const db = admin.firestore();
+  const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
+  const db = admin.firestore(firestoreDbId);
   const userDoc = await db.collection('users').doc(userId).get();
   const gmb = userDoc.data()?.gmb;
 

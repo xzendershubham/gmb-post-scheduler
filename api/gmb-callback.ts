@@ -16,8 +16,7 @@ function initAdmin() {
 function getDb() {
   initAdmin();
   const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
-  // @ts-ignore — named database support
-  return admin.firestore().settings ? admin.firestore() : admin.firestore();
+  return admin.firestore(firestoreDbId);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -62,8 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const gmbAccounts = accountsData.accounts || [];
 
     // Step 3: Store tokens + accounts in Firestore
-    initAdmin();
-    const db = admin.firestore();
+    const db = getDb();
 
     await db.collection('users').doc(userId as string).set(
       {
