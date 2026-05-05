@@ -254,6 +254,11 @@ export function AccountsManager() {
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
             <p className="text-red-400 font-bold text-sm">
               Connection failed. Please try again or check your Google Cloud OAuth setup.
+              {new URLSearchParams(window.location.search).get('details') && (
+                <span className="block mt-1 text-[10px] opacity-60 uppercase tracking-widest">
+                  Detail: {new URLSearchParams(window.location.search).get('details')}
+                </span>
+              )}
             </p>
           </motion.div>
         )}

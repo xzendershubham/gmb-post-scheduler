@@ -16,7 +16,12 @@ function initAdmin() {
 function getDb() {
   initAdmin();
   const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
-  return admin.firestore(firestoreDbId);
+  try {
+    return admin.firestore(firestoreDbId);
+  } catch (e) {
+    console.error('Failed to init named firestore, falling back to default:', e);
+    return admin.firestore();
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -80,7 +85,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Redirect back to app with success signal
     res.redirect(`${appUrl}?gmb_connected=true&accounts=${gmbAccounts.length}`);
   } catch (err: any) {
-    console.error('GMB callback error:', err);
-    res.redirect(`${appUrl}?gmb_error=server_error`);
+    console.error('GMB callback fatal error:', err);
+    const errorType = err.message?.includes('database') ? 'db_error' : 'server_error';
+    res.redirect(`${appUrl}?gmb_error=${errorType}&details=${encodeURIComponent(err.message || 'unknown')}`);
   }
 }
