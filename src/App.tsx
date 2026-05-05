@@ -100,7 +100,7 @@ function AppContent() {
           <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center shadow-2xl shadow-blue-500/40">
             <LayoutDashboard className="w-6 h-6 text-white" />
           </div>
-          <span className="text-blue-400 font-bold tracking-widest uppercase text-[10px]">Initializing PostPilot...</span>
+          <span className="text-blue-400 font-bold tracking-widest uppercase text-[10px]">Initializing POSTFLOW...</span>
         </motion.div>
       </div>
     );
