@@ -10,7 +10,10 @@ function initAdmin() {
   try {
     const serviceAccount = JSON.parse(key);
     if (serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      serviceAccount.private_key = serviceAccount.private_key
+        .replace(/\\n/g, '\n')
+        .replace(/\n/g, '\n')
+        .trim();
     }
     return admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
   } catch (err) {

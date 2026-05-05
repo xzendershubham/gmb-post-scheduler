@@ -11,9 +11,12 @@ function initAdmin() {
 
   try {
     const serviceAccount = JSON.parse(key);
-    // Fix common formatting issues with private_key in env vars
+    // Aggressive fix for private_key formatting
     if (serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      serviceAccount.private_key = serviceAccount.private_key
+        .replace(/\\n/g, '\n')
+        .replace(/\n/g, '\n') // handle actual newlines if any
+        .trim();
     }
     return admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
