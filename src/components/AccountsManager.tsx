@@ -16,6 +16,7 @@ import {
   WifiOff,
   RefreshCw,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -42,6 +43,8 @@ export function AccountsManager() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', gmbId: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [verifying, setVerifying] = useState<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<Record<string, 'healthy' | 'error' | null>>({});
 
   // GMB Real Connect State
   const [gmbConnecting, setGmbConnecting] = useState(false);
@@ -164,6 +167,27 @@ export function AccountsManager() {
       await deleteDoc(doc(db, 'accounts', id));
     } catch (err) {
       console.error('Delete failed:', err);
+    }
+  };
+
+  const handleVerifyAccount = async (account: any) => {
+    if (!user || account.type !== 'gmb_real') return;
+    setVerifying(account.id);
+    try {
+      // Use gmb-locations to test the token
+      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.uid}&accountName=${account.locationId.split('/locations/')[0]}`);
+      const data = await res.json();
+      
+      if (data.accounts || data.locations) {
+        setHealthStatus(prev => ({ ...prev, [account.id]: 'healthy' }));
+        setTimeout(() => setHealthStatus(prev => ({ ...prev, [account.id]: null })), 3000);
+      } else {
+        setHealthStatus(prev => ({ ...prev, [account.id]: 'error' }));
+      }
+    } catch (err) {
+      setHealthStatus(prev => ({ ...prev, [account.id]: 'error' }));
+    } finally {
+      setVerifying(null);
     }
   };
 
@@ -424,6 +448,26 @@ export function AccountsManager() {
                       <><CheckCircle2 className="w-3.5 h-3.5" /> Manual</>
                     )}
                   </div>
+
+                  {account.type === 'gmb_real' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleVerifyAccount(account)}
+                      disabled={verifying === account.id}
+                      className={cn(
+                        "h-7 px-2 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all",
+                        healthStatus[account.id] === 'healthy' ? "bg-emerald-500/20 text-emerald-400" :
+                        healthStatus[account.id] === 'error' ? "bg-red-500/20 text-red-400" :
+                        "bg-white/5 text-slate-400 hover:text-white"
+                      )}
+                    >
+                      {verifying === account.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 
+                       healthStatus[account.id] === 'healthy' ? "Verified ✓" :
+                       healthStatus[account.id] === 'error' ? "Connection Error" : "Verify Connection"}
+                    </Button>
+                  )}
+
                   <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
                     {account.type === 'gmb_real' ? 'Auto-Publish ✓' : 'Scheduler Only'}
                   </div>

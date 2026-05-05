@@ -103,8 +103,10 @@ async function publishToGMB(post: any, accessToken: string, locationId: string) 
 
 // ─── Main Handler ────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Security — only cron-job.org (with secret header) can call this
-  const secret = req.headers['x-cron-secret'];
+  // Security — only cron-job.org (with secret header) or manual trigger (with query secret) can call this
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  const manualUserId = req.query.userId as string;
+
   if (secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -117,17 +119,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Query all SCHEDULED posts that are due (scheduledAt <= now)
-    // Using a single where to avoid needing composite index
-    const snapshot = await db
-      .collection('posts')
-      .where('status', '==', 'SCHEDULED')
-      .get();
+    let queryRef = db.collection('posts').where('status', '==', 'SCHEDULED');
+    
+    // If triggered manually for a specific user, filter accordingly
+    if (manualUserId) {
+      queryRef = queryRef.where('userId', '==', manualUserId);
+    }
 
-    const duePosts = snapshot.docs.filter(
-      (doc) => doc.data().scheduledAt && doc.data().scheduledAt <= now
-    );
+    const snapshot = await queryRef.get();
 
-    console.log(`Found ${duePosts.length} due posts to publish`);
+    const duePosts = snapshot.docs.filter((doc) => {
+      const data = doc.data();
+      const isDue = data.scheduledAt && data.scheduledAt <= now;
+      if (!isDue) {
+        console.log(`Post ${doc.id} skipped: Scheduled for ${data.scheduledAt}, current time is ${now}`);
+      }
+      return isDue;
+    });
+
+    console.log(`Found ${duePosts.length} due posts to publish at ${now}`);
 
     for (const docSnap of duePosts) {
       const post = { id: docSnap.id, ...docSnap.data() };
