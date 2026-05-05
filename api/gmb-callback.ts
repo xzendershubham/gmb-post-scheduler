@@ -25,7 +25,7 @@ function getDb() {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://gmb-post-scheduler.vercel.app';
+  const appUrl = process.env.VITE_APP_URL || process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://gmb-post-scheduler.vercel.app';
   const { code, state: userId, error } = req.query;
 
   if (error) {

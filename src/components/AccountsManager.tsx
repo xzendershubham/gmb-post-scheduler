@@ -34,7 +34,7 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from './AuthProvider';
 
-const APP_URL = import.meta.env.VITE_APP_URL || 'https://gmb-post-scheduler.vercel.app';
+const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
 
 export function AccountsManager() {
   const { user } = useAuth();
@@ -60,14 +60,12 @@ export function AccountsManager() {
     if (params.get('gmb_connected') === 'true') {
       setGmbStatus('connected');
       setIsGmbConnected(true);
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      // Load locations
+      // window.history.replaceState({}, document.title, window.location.pathname);
       loadGmbLocations();
     }
     if (params.get('gmb_error')) {
       setGmbStatus('error');
-      window.history.replaceState({}, document.title, window.location.pathname);
+      // window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 

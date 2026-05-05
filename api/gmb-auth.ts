@@ -7,7 +7,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Missing userId or GOOGLE_CLIENT_ID env var' });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://gmb-post-scheduler.vercel.app';
+  const appUrl = process.env.VITE_APP_URL || process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://gmb-post-scheduler.vercel.app';
 
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
