@@ -8,7 +8,11 @@ function initAdmin() {
   const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY env var not set');
   try {
-    return admin.initializeApp({ credential: admin.credential.cert(JSON.parse(key)) });
+    const serviceAccount = JSON.parse(key);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+    return admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
   } catch (err) {
     console.error('Firebase Admin init failed:', err);
     throw err;

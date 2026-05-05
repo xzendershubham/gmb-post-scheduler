@@ -11,6 +11,10 @@ function initAdmin() {
 
   try {
     const serviceAccount = JSON.parse(key);
+    // Fix common formatting issues with private_key in env vars
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     return admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
