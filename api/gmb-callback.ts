@@ -10,16 +10,18 @@ function initAdmin() {
   }
 
   try {
-    const serviceAccount = JSON.parse(key);
-    // Aggressive fix for private_key formatting
-    if (serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key
-        .replace(/\\n/g, '\n')
-        .replace(/\n/g, '\n') // handle actual newlines if any
-        .trim();
-    }
+    const sa = JSON.parse(key);
+    // Explicit cleaning: remove ALL literal \n and resolve them
+    const privateKey = sa.private_key
+      ? sa.private_key.replace(/\\n/g, '\n').replace(/\n/g, '\n').trim()
+      : '';
+
     return admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+      credential: admin.credential.cert({
+        projectId: sa.project_id,
+        clientEmail: sa.client_email,
+        privateKey: privateKey,
+      }),
     });
   } catch (e: any) {
     const keyPreview = key ? `${key.substring(0, 50)}...` : 'empty';

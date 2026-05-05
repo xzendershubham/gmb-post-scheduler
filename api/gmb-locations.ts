@@ -4,14 +4,18 @@ import admin from 'firebase-admin';
 function initAdmin() {
   const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is missing');
-  const serviceAccount = JSON.parse(key);
-  if (serviceAccount.private_key) {
-    serviceAccount.private_key = serviceAccount.private_key
-      .replace(/\\n/g, '\n')
-      .replace(/\n/g, '\n')
-      .trim();
-  }
-  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  const sa = JSON.parse(key);
+  const privateKey = sa.private_key
+    ? sa.private_key.replace(/\\n/g, '\n').replace(/\n/g, '\n').trim()
+    : '';
+
+  return admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: sa.project_id,
+      clientEmail: sa.client_email,
+      privateKey: privateKey,
+    }),
+  });
 }
 
 async function getValidAccessToken(userId: string): Promise<string | null> {
