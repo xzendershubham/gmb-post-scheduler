@@ -22,7 +22,8 @@ function initAdmin() {
       credential: admin.credential.cert(serviceAccount),
     });
   } catch (e: any) {
-    throw new Error(`Firebase initialization failed: ${e.message}`);
+    const keyPreview = key ? `${key.substring(0, 50)}...` : 'empty';
+    throw new Error(`Firebase initialization failed: ${e.message} (Key starts with: ${keyPreview})`);
   }
 }
 
