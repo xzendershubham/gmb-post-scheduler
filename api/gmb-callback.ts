@@ -10,8 +10,13 @@ function initAdmin() {
   }
 
   try {
-    const sa = JSON.parse(key);
-    // Explicit cleaning: remove ALL literal \n and resolve them
+    // Handle potential ALL-CAPS keys from environment variables
+    const rawSa = JSON.parse(key);
+    const sa: Record<string, any> = {};
+    Object.keys(rawSa).forEach(k => {
+      sa[k.toLowerCase()] = rawSa[k];
+    });
+
     const privateKey = sa.private_key
       ? sa.private_key.replace(/\\n/g, '\n').replace(/\n/g, '\n').trim()
       : '';

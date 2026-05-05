@@ -4,7 +4,12 @@ import admin from 'firebase-admin';
 function initAdmin() {
   const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is missing');
-  const sa = JSON.parse(key);
+  const rawSa = JSON.parse(key);
+  const sa: Record<string, any> = {};
+  Object.keys(rawSa).forEach(k => {
+    sa[k.toLowerCase()] = rawSa[k];
+  });
+
   const privateKey = sa.private_key
     ? sa.private_key.replace(/\\n/g, '\n').replace(/\n/g, '\n').trim()
     : '';
