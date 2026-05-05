@@ -2,15 +2,17 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 
 function initAdmin() {
-  if (admin.apps.length > 0) return;
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  if (admin.apps.length > 0) return admin.app();
+  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is missing');
+  const serviceAccount = JSON.parse(key);
+  return admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 }
 
 async function getValidAccessToken(userId: string): Promise<string | null> {
-  initAdmin();
+  const app = initAdmin();
   const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
-  const db = admin.firestore(firestoreDbId);
+  const db = app.firestore(firestoreDbId);
   const userDoc = await db.collection('users').doc(userId).get();
   const gmb = userDoc.data()?.gmb;
 

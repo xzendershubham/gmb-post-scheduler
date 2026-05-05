@@ -2,25 +2,31 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 
 function initAdmin() {
-  if (admin.apps.length > 0) return;
+  if (admin.apps.length > 0) return admin.app();
+  
+  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (!key) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is missing in environment variables.');
+  }
+
   try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
-    admin.initializeApp({
+    const serviceAccount = JSON.parse(key);
+    return admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
-  } catch (e) {
-    console.error('Firebase admin init failed:', e);
+  } catch (e: any) {
+    throw new Error(`Firebase initialization failed: ${e.message}`);
   }
 }
 
 function getDb() {
-  initAdmin();
+  const app = initAdmin();
   const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
   try {
-    return admin.firestore(firestoreDbId);
+    return app.firestore(firestoreDbId);
   } catch (e) {
     console.error('Failed to init named firestore, falling back to default:', e);
-    return admin.firestore();
+    return app.firestore();
   }
 }
 
