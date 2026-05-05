@@ -175,7 +175,15 @@ export function AccountsManager() {
     setVerifying(account.id);
     try {
       // Use gmb-locations to test the token
-      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.uid}&accountName=${account.locationId.split('/locations/')[0]}`);
+      const locId = account.locationId || '';
+      const accountName = locId.includes('/locations/') ? locId.split('/locations/')[0] : '';
+      
+      if (!accountName) {
+        setHealthStatus(prev => ({ ...prev, [account.id]: 'error' }));
+        return;
+      }
+
+      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.uid}&accountName=${accountName}`);
       const data = await res.json();
       
       if (data.accounts || data.locations) {
