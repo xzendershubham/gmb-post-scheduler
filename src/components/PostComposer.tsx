@@ -176,7 +176,7 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
 
       const postData = {
         user_id: user.id,
-        account_id: formData.accountId,
+        account_id: formData.accountId || null,
         account_name: selectedAccount?.name || 'Unknown Account',
         post_type: postType,
         summary: formData.summary,
