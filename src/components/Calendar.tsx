@@ -26,8 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { useAuth } from './AuthProvider';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 
 interface ScheduledPost {
   id: string;
@@ -56,26 +55,45 @@ export function Calendar({ onEditPost, selectedAccountId }: { onEditPost: (post:
     if (!user) return;
     setLoading(true);
 
-    // Simple query by userId only - no composite index needed
-    const q = query(
-      collection(db, 'posts'),
-      where('userId', '==', user.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedPosts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as ScheduledPost[];
-      setAllPosts(fetchedPosts);
+    const fetchPosts = async () => {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (!error) {
+        setAllPosts((data || []).map(p => ({
+           id: p.id,
+           summary: p.summary,
+           scheduledAt: p.scheduled_at,
+           imageUrl: p.image_url,
+           status: p.status,
+           postType: p.post_type,
+           accountId: p.account_id,
+           accountName: p.account_name
+        })));
+      }
       setLoading(false);
-    }, (error) => {
-      console.error('Firestore subscription error:', error);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
-  }, [user]); // selectedAccountId filtering is client-side
+    fetchPosts();
+
+    const channel = supabase
+      .channel('calendar_changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'posts',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        fetchPosts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const renderHeader = () => {
     return (
@@ -117,10 +135,6 @@ export function Calendar({ onEditPost, selectedAccountId }: { onEditPost: (post:
     const monthEnd = endOfMonth(monthStart);
     const startDate = startOfWeek(monthStart);
     const endDate = endOfWeek(monthEnd);
-    const rows = [];
-    let days = [];
-    let day = startDate;
-
     const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
     return (
@@ -170,13 +184,32 @@ export function Calendar({ onEditPost, selectedAccountId }: { onEditPost: (post:
                       e.stopPropagation();
                       onEditPost(post);
                     }}
-                    className="bg-blue-600/10 border border-blue-500/20 rounded-md p-1.5 cursor-pointer hover:bg-blue-600/20 transition-all group/post"
+                    className={cn(
+                      "border rounded-md p-1.5 cursor-pointer transition-all group/post",
+                      post.status === 'PUBLISHED'
+                        ? 'bg-emerald-600/10 border-emerald-500/20 hover:bg-emerald-600/20'
+                        : post.status === 'FAILED'
+                        ? 'bg-red-600/10 border-red-500/20 hover:bg-red-600/20'
+                        : 'bg-blue-600/10 border-blue-500/20 hover:bg-blue-600/20'
+                    )}
                   >
-                    <p className="text-[10px] font-black uppercase text-blue-400/60 mb-0.5">{post.postType}</p>
-                    <p className="text-[10px] font-bold text-blue-200 truncate tracking-tight">{post.summary}</p>
+                    <p className={cn(
+                      "text-[10px] font-black uppercase mb-0.5",
+                      post.status === 'PUBLISHED' ? 'text-emerald-400/60' :
+                      post.status === 'FAILED' ? 'text-red-400/60' : 'text-blue-400/60'
+                    )}>{post.postType}</p>
+                    <p className={cn(
+                      "text-[10px] font-bold truncate tracking-tight",
+                      post.status === 'PUBLISHED' ? 'text-emerald-200' :
+                      post.status === 'FAILED' ? 'text-red-200' : 'text-blue-200'
+                    )}>{post.summary}</p>
                     <div className="flex items-center justify-between mt-1 opacity-0 group-hover/post:opacity-100 transition-opacity">
-                      <span className="text-[7px] text-blue-400/80 font-black truncate uppercase">{post.accountName || 'GMB'}</span>
-                      <Clock className="w-2.5 h-2.5 text-blue-400/50" />
+                      <span className={cn(
+                        "text-[7px] font-black truncate uppercase",
+                        post.status === 'PUBLISHED' ? 'text-emerald-400/80' :
+                        post.status === 'FAILED' ? 'text-red-400/80' : 'text-blue-400/80'
+                      )}>{post.accountName || 'GMB'}</span>
+                      <Clock className="w-2.5 h-2.5 text-slate-500" />
                     </div>
                   </motion.div>
                 ))}

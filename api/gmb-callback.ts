@@ -1,49 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
-
-function initAdmin() {
-  if (admin.apps.length > 0) return admin.app();
-  
-  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!key) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is missing in environment variables.');
-  }
-
-  try {
-    // Handle potential ALL-CAPS keys from environment variables
-    const rawSa = JSON.parse(key);
-    const sa: Record<string, any> = {};
-    Object.keys(rawSa).forEach(k => {
-      sa[k.toLowerCase()] = rawSa[k];
-    });
-
-    const privateKey = sa.private_key
-      ? sa.private_key.replace(/\\n/g, '\n').replace(/\n/g, '\n').trim()
-      : '';
-
-    return admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: sa.project_id,
-        clientEmail: sa.client_email,
-        privateKey: privateKey,
-      }),
-    });
-  } catch (e: any) {
-    const keyPreview = key ? `${key.substring(0, 50)}...` : 'empty';
-    throw new Error(`Firebase initialization failed: ${e.message} (Key starts with: ${keyPreview})`);
-  }
-}
-
-function getDb() {
-  const app = initAdmin();
-  const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
-  try {
-    return app.firestore(firestoreDbId);
-  } catch (e) {
-    console.error('Failed to init named firestore, falling back to default:', e);
-    return app.firestore();
-  }
-}
+import { supabaseAdmin } from './supabase-client';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const appUrl = process.env.VITE_APP_URL || process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://gmb-post-scheduler.vercel.app';
@@ -78,36 +34,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.redirect(`${appUrl}?gmb_error=token_failed`);
     }
 
-    // Step 2: Fetch GMB accounts (account management API)
-    const accountsRes = await fetch(
-      'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
-      { headers: { Authorization: `Bearer ${tokens.access_token}` } }
-    );
-    const accountsData = await accountsRes.json();
-    const gmbAccounts = accountsData.accounts || [];
+    // Step 2: Store refresh token in Supabase Profile
+    if (tokens.refresh_token) {
+       const { error: dbError } = await supabaseAdmin
+        .from('profiles')
+        .update({ 
+          gmb_refresh_token: tokens.refresh_token,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId as string);
 
-    // Step 3: Store tokens + accounts in Firestore
-    const db = getDb();
-
-    await db.collection('users').doc(userId as string).set(
-      {
-        gmb: {
-          refreshToken: tokens.refresh_token || null,
-          accessToken: tokens.access_token,
-          tokenExpiry: Date.now() + (tokens.expires_in || 3600) * 1000,
-          accounts: gmbAccounts,
-          connectedAt: admin.firestore.FieldValue.serverTimestamp(),
-          email: null, // will be set from ID token if needed
-        },
-      },
-      { merge: true }
-    );
+      if (dbError) throw dbError;
+    }
 
     // Redirect back to app with success signal
-    res.redirect(`${appUrl}?gmb_connected=true&accounts=${gmbAccounts.length}`);
+    res.redirect(`${appUrl}?gmb_connected=true`);
   } catch (err: any) {
     console.error('GMB callback fatal error:', err);
-    const errorType = err.message?.includes('database') ? 'db_error' : 'server_error';
-    res.redirect(`${appUrl}?gmb_error=${errorType}&details=${encodeURIComponent(err.message || 'unknown')}`);
+    res.redirect(`${appUrl}?gmb_error=server_error&details=${encodeURIComponent(err.message || 'unknown')}`);
   }
 }

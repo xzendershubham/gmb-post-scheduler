@@ -14,8 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { useAuth } from './AuthProvider';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 
 export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post: any) => void, selectedAccountId: string }) {
@@ -26,33 +25,44 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
 
   // Derived: filter client-side by selected account
   const pipelinePosts = allPosts
-    .filter(p => selectedAccountId === 'all' || p.accountId === selectedAccountId)
-    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+    .filter(p => selectedAccountId === 'all' || p.account_id === selectedAccountId)
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
 
   useEffect(() => {
     if (!user) return;
     setLoading(true);
 
-    // Simple query by userId only - no composite index needed
-    const q = query(
-      collection(db, 'posts'),
-      where('userId', '==', user.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const posts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setAllPosts(posts);
+    const fetchPosts = async () => {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (!error) {
+        setAllPosts(data || []);
+      }
       setLoading(false);
-    }, (error) => {
-      console.error('Firestore subscription error:', error);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
-  }, [user]); // selectedAccountId filtering is done client-side
+    fetchPosts();
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel('posts_changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'posts',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        fetchPosts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const handleSync = async () => {
     if (!user) return;
@@ -61,7 +71,7 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
 
     setSyncing(true);
     try {
-      const res = await fetch(`/api/publish-posts?userId=${user.uid}&secret=${secret}`);
+      const res = await fetch(`/api/publish-posts?userId=${user.id}&secret=${secret}`);
       const data = await res.json();
       if (data.ok) {
         alert(`Sync Complete! Published: ${data.published}, Failed: ${data.failed}, Skipped: ${data.skipped}`);
@@ -133,43 +143,43 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
                            'bg-slate-900 border-slate-800'
                          )}>
                             {post.status === 'PUBLISHED' ? (
-                              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                               <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                             ) : post.status === 'FAILED' ? (
-                              <XCircle className="w-5 h-5 text-red-400" />
-                            ) : post.postType === 'EVENT' ? (
-                              <Sparkles className="w-5 h-5 text-purple-500" />
+                               <XCircle className="w-5 h-5 text-red-400" />
+                            ) : post.post_type === 'EVENT' ? (
+                               <Sparkles className="w-5 h-5 text-purple-500" />
                             ) : (
-                              <Clock className="w-5 h-5 text-blue-500" />
+                               <Clock className="w-5 h-5 text-blue-500" />
                             )}
                          </div>
                          <div className="space-y-1">
                             <div className="flex items-center gap-3 flex-wrap">
-                               <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{post.postType}</span>
+                               <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{post.post_type}</span>
                                <span className="text-[10px] font-bold text-slate-500 uppercase opacity-40">|</span>
-                               <span className="text-[10px] font-bold text-white uppercase tracking-widest">{post.accountName || 'No Account'}</span>
+                               <span className="text-[10px] font-bold text-white uppercase tracking-widest">{post.account_name || 'No Account'}</span>
                                <span className="text-[10px] font-bold text-slate-500 uppercase opacity-40">|</span>
                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                 {post.scheduledAt ? format(new Date(post.scheduledAt), 'MMM dd, HH:mm') : 'Unscheduled'}
+                                 {post.scheduled_at ? format(new Date(post.scheduled_at), 'MMM dd, HH:mm') : 'Unscheduled'}
                                </span>
                             </div>
                             <h4 className="text-sm font-bold text-white tracking-tight line-clamp-1">{post.summary}</h4>
-                            {post.status === 'FAILED' && post.publishError && (
-                              <p className="text-[10px] text-red-400 font-medium line-clamp-2 max-w-md mt-1">
-                                ⚠ {post.publishError}
-                              </p>
+                            {post.status === 'FAILED' && post.publish_error && (
+                               <p className="text-[10px] text-red-400 font-medium line-clamp-2 max-w-md mt-1">
+                                 ⚠ {post.publish_error}
+                               </p>
                             )}
-                            {post.status === 'PUBLISHED' && post.publishedAt && (() => {
-                              try {
-                                const date = new Date(post.publishedAt?.toDate?.() || post.publishedAt);
-                                if (isNaN(date.getTime())) return null;
-                                return (
-                                  <p className="text-[10px] text-emerald-400 font-bold">
-                                    Published {formatDistanceToNow(date, { addSuffix: true })}
-                                  </p>
-                                );
-                              } catch (e) {
-                                return null;
-                              }
+                            {post.status === 'PUBLISHED' && post.updated_at && (() => {
+                               try {
+                                 const date = new Date(post.updated_at);
+                                 if (isNaN(date.getTime())) return null;
+                                 return (
+                                   <p className="text-[10px] text-emerald-400 font-bold">
+                                     Published {formatDistanceToNow(date, { addSuffix: true })}
+                                   </p>
+                                 );
+                               } catch (e) {
+                                 return null;
+                               }
                             })()}
                          </div>
                       </div>
@@ -183,9 +193,9 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
                              : 'border-blue-500/20 bg-blue-500/5 text-blue-400'
                          )}>
                             <div className={cn(
-                              "w-1.5 h-1.5 rounded-full",
-                              post.status === 'PUBLISHED' ? 'bg-emerald-400 animate-pulse' :
-                              post.status === 'FAILED' ? 'bg-red-400' : 'bg-blue-400 animate-pulse'
+                               "w-1.5 h-1.5 rounded-full",
+                               post.status === 'PUBLISHED' ? 'bg-emerald-400 animate-pulse' :
+                               post.status === 'FAILED' ? 'bg-red-400' : 'bg-blue-400 animate-pulse'
                             )} />
                             {post.status}
                          </div>

@@ -1,53 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-
-// ─── Firebase Admin Init ────────────────────────────────────────────────────
-function initAdmin() {
-  if (admin.apps.length > 0) return admin.app();
-  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY env var not set');
-  try {
-    const rawSa = JSON.parse(key);
-    const sa: Record<string, any> = {};
-    Object.keys(rawSa).forEach(k => {
-      sa[k.toLowerCase()] = rawSa[k];
-    });
-
-    const privateKey = sa.private_key
-      ? sa.private_key.replace(/\\n/g, '\n').replace(/\n/g, '\n').trim()
-      : '';
-
-    return admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: sa.project_id,
-        clientEmail: sa.client_email,
-        privateKey: privateKey,
-      }),
-    });
-  } catch (err) {
-    console.error('Firebase Admin init failed:', err);
-    throw err;
-  }
-}
+import { supabaseAdmin } from './supabase-client';
 
 // ─── Token Refresh ──────────────────────────────────────────────────────────
-async function getValidAccessToken(db: admin.firestore.Firestore, userId: string) {
-  const userDoc = await db.collection('users').doc(userId).get();
-  const gmb = userDoc.data()?.gmb;
-  if (!gmb?.refreshToken) throw new Error(`No GMB token for user ${userId}`);
+async function getValidAccessToken(userId: string) {
+  const { data: profile, error } = await supabaseAdmin
+    .from('profiles')
+    .select('gmb_refresh_token')
+    .eq('id', userId)
+    .single();
 
-  // Token still valid?
-  if (gmb.tokenExpiry && Date.now() < gmb.tokenExpiry - 60000) {
-    return gmb.accessToken as string;
-  }
+  if (error || !profile?.gmb_refresh_token) throw new Error(`No GMB token for user ${userId}`);
 
-  // Refresh it
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      refresh_token: gmb.refreshToken,
+      refresh_token: profile.gmb_refresh_token,
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
       grant_type: 'refresh_token',
@@ -56,10 +24,6 @@ async function getValidAccessToken(db: admin.firestore.Firestore, userId: string
   const tokens = await res.json();
   if (!tokens.access_token) throw new Error('Token refresh failed');
 
-  await db.collection('users').doc(userId).update({
-    'gmb.accessToken': tokens.access_token,
-    'gmb.tokenExpiry': Date.now() + (tokens.expires_in || 3600) * 1000,
-  });
   return tokens.access_token as string;
 }
 
@@ -68,43 +32,43 @@ async function publishToGMB(post: any, accessToken: string, locationId: string) 
   const payload: Record<string, any> = {
     languageCode: 'en-US',
     summary: post.summary,
-    topicType: post.postType || 'STANDARD',
+    topicType: post.post_type || 'STANDARD',
   };
 
-  // CTA
-  if (post.ctaType && post.ctaType !== 'CALL' && post.ctaUrl) {
-    payload.callToAction = { actionType: post.ctaType, url: post.ctaUrl };
+  if (post.cta_type && post.cta_type !== 'CALL' && post.cta_url) {
+    payload.callToAction = { actionType: post.cta_type, url: post.cta_url };
   }
 
-  // Image (only external URLs, not base64 — GMB API doesn't accept base64)
-  if (post.imageUrl && post.imageUrl.startsWith('http')) {
-    payload.media = [{ mediaFormat: 'PHOTO', sourceUrl: post.imageUrl }];
+  if (post.image_url) {
+    if (post.image_url.startsWith('data:')) {
+      throw new Error('Image format invalid (base64 not supported).');
+    }
+    payload.media = [{ mediaFormat: 'PHOTO', sourceUrl: post.image_url }];
   }
 
-  // Event / Offer
-  if (post.postType === 'EVENT' || post.postType === 'OFFER') {
-    const startDate = new Date(post.startTime || post.scheduledAt);
-    const endDate = new Date(post.endTime || post.scheduledAt);
+  if (post.post_type === 'EVENT' || post.post_type === 'OFFER') {
+    const startDate = new Date(post.start_time || post.scheduled_at);
+    const endDate = new Date(post.end_time || post.scheduled_at);
     const toDateObj = (d: Date) => ({
       year: d.getFullYear(),
       month: d.getMonth() + 1,
       day: d.getDate(),
     });
     payload.event = {
-      title: post.eventTitle || (post.postType === 'OFFER' ? 'Offer' : 'Event'),
+      title: post.event_title || (post.post_type === 'OFFER' ? 'Offer' : 'Event'),
       schedule: { startDate: toDateObj(startDate), endDate: toDateObj(endDate) },
     };
-    if (post.postType === 'OFFER') {
+    if (post.post_type === 'OFFER') {
       payload.offer = {
-        couponCode: post.offerCoupon || undefined,
-        redeemOnlineUrl: post.offerUrl || undefined,
-        termsConditions: post.offerTerms || undefined,
+        couponCode: post.offer_coupon || undefined,
+        redeemOnlineUrl: post.offer_url || undefined,
+        termsConditions: post.offer_terms || undefined,
       };
     }
   }
 
   const response = await fetch(
-    `https://mybusiness.googleapis.com/v4/${locationId}/localPosts`,
+    `https://mybusiness.googleapis.com/v1/${locationId}/localPosts`,
     {
       method: 'POST',
       headers: {
@@ -125,7 +89,6 @@ async function publishToGMB(post: any, accessToken: string, locationId: string) 
 
 // ─── Main Handler ────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Security — only cron-job.org (with secret header) or manual trigger (with query secret) can call this
   const secret = req.headers['x-cron-secret'] || req.query.secret;
   const manualUserId = req.query.userId as string;
 
@@ -134,89 +97,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const app = initAdmin();
-    const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
-    const db = getFirestore(app, firestoreDbId);
     const now = new Date().toISOString();
-
     const results = { published: 0, failed: 0, skipped: 0, errors: [] as string[] };
 
-    // Query all SCHEDULED posts that are due (scheduledAt <= now)
-    let queryRef = db.collection('posts').where('status', '==', 'SCHEDULED');
+    let query = supabaseAdmin
+      .from('posts')
+      .select('*')
+      .eq('status', 'SCHEDULED')
+      .lte('scheduled_at', now);
     
-    // If triggered manually for a specific user, filter accordingly
     if (manualUserId) {
-      queryRef = queryRef.where('userId', '==', manualUserId);
+      query = query.eq('user_id', manualUserId);
     }
 
-    const snapshot = await queryRef.get();
+    const { data: duePosts, error: fetchError } = await query;
+    if (fetchError) throw fetchError;
 
-    const duePosts = snapshot.docs.filter((doc) => {
-      const data = doc.data();
-      const isDue = data.scheduledAt && data.scheduledAt <= now;
-      if (!isDue) {
-        console.log(`Post ${doc.id} skipped: Scheduled for ${data.scheduledAt}, current time is ${now}`);
-      }
-      return isDue;
-    });
+    console.log(`Found ${duePosts?.length || 0} due posts to publish at ${now}`);
 
-    console.log(`Found ${duePosts.length} due posts to publish at ${now}`);
-
-    for (const docSnap of duePosts) {
-      const post = { id: docSnap.id, ...docSnap.data() };
-      const postRef = db.collection('posts').doc(post.id);
-
+    for (const post of (duePosts || [])) {
       try {
-        // Skip posts without an account or locationId
-        if (!post.accountId) {
-          await postRef.update({ status: 'FAILED', publishError: 'No account linked to this post' });
+        if (!post.account_id) {
+          await supabaseAdmin.from('posts').update({ status: 'FAILED', publish_error: 'No account linked' }).eq('id', post.id);
           results.skipped++;
           continue;
         }
 
-        // Get the account's locationId from Firestore
-        const accountDoc = await db.collection('accounts').doc(post.accountId).get();
-        const account = accountDoc.data();
+        const { data: account } = await supabaseAdmin
+          .from('accounts')
+          .select('location_id')
+          .eq('id', post.account_id)
+          .single();
 
-        if (!account?.locationId) {
-          await postRef.update({ status: 'FAILED', publishError: 'Account has no GMB location linked. Please reconnect in Accounts tab.' });
+        if (!account?.location_id) {
+          await supabaseAdmin.from('posts').update({ status: 'FAILED', publish_error: 'Account has no GMB location linked' }).eq('id', post.id);
           results.skipped++;
           continue;
         }
 
-        // Get a valid access token for this user
-        const accessToken = await getValidAccessToken(db, post.userId);
+        const accessToken = await getValidAccessToken(post.user_id);
+        const gmbResult = await publishToGMB(post, accessToken, account.location_id);
 
-        // Publish to GMB
-        const gmbResult = await publishToGMB(post, accessToken, account.locationId);
-
-        // Mark as published
-        await postRef.update({
+        await supabaseAdmin.from('posts').update({
           status: 'PUBLISHED',
-          publishedAt: FieldValue.serverTimestamp(),
-          gmbPostName: gmbResult.name || null,
-          publishError: null,
-        });
+          updated_at: new Date().toISOString(),
+          gmb_post_name: gmbResult.name || null,
+          publish_error: null,
+        }).eq('id', post.id);
 
         results.published++;
-        console.log(`✅ Published post ${post.id} to ${account.locationId}`);
       } catch (err: any) {
         const errMsg = err.message || String(err);
-        console.error(`❌ Failed to publish post ${post.id}:`, errMsg);
-        await postRef.update({
+        await supabaseAdmin.from('posts').update({
           status: 'FAILED',
-          publishError: errMsg.substring(0, 500), // Firestore string limit
-        });
+          publish_error: errMsg.substring(0, 500),
+        }).eq('id', post.id);
         results.failed++;
-        results.errors.push(`Post ${post.id}: ${errMsg.substring(0, 100)}`);
+        results.errors.push(`Post ${post.id}: ${errMsg}`);
       }
     }
 
-    res.json({
-      ok: true,
-      timestamp: now,
-      ...results,
-    });
+    res.json({ ok: true, timestamp: now, ...results });
   } catch (err: any) {
     console.error('publish-posts fatal error:', err);
     res.status(500).json({ error: err.message });

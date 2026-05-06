@@ -20,18 +20,7 @@ import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { db } from '../lib/firebase';
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  onSnapshot,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  updateDoc,
-} from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthProvider';
 
 const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
@@ -60,30 +49,53 @@ export function AccountsManager() {
     if (params.get('gmb_connected') === 'true') {
       setGmbStatus('connected');
       setIsGmbConnected(true);
-      // window.history.replaceState({}, document.title, window.location.pathname);
       loadGmbLocations();
     }
     if (params.get('gmb_error')) {
       setGmbStatus('error');
-      // window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 
-  // Listen to user's accounts in Firestore
+  // Listen to user's accounts in Supabase
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'accounts'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setAccounts(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+    
+    const fetchAccounts = async () => {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (!error) {
+        setAccounts(data || []);
+      }
       setLoading(false);
-    });
-    return () => unsub();
+    };
+
+    fetchAccounts();
+
+    // Subscribe to changes
+    const channel = supabase
+      .channel('accounts_changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'accounts',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        fetchAccounts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   // ─── Connect Real GMB (OAuth) ──────────────────────────────────────────────
   const handleConnectGMB = () => {
     if (!user) return;
-    const oauthUrl = `${APP_URL}/api/gmb-auth?userId=${user.uid}`;
+    const oauthUrl = `${APP_URL}/api/gmb-auth?userId=${user.id}`;
     window.location.href = oauthUrl;
   };
 
@@ -92,18 +104,16 @@ export function AccountsManager() {
     if (!user) return;
     setLoadingLocations(true);
     try {
-      // Fetch GMB accounts
-      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.uid}`);
+      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.id}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
       setGmbAccounts(data.accounts || []);
 
-      // Fetch locations for the first account
       if (data.accounts?.length > 0) {
         const acctName = data.accounts[0].name;
         const locRes = await fetch(
-          `${APP_URL}/api/gmb-locations?userId=${user.uid}&accountName=${acctName}`
+          `${APP_URL}/api/gmb-locations?userId=${user.id}&accountName=${acctName}`
         );
         const locData = await locRes.json();
         setGmbLocations(locData.locations || []);
@@ -115,21 +125,18 @@ export function AccountsManager() {
     }
   };
 
-  // ─── Save GMB Location as an Account ──────────────────────────────────────
   const handleSaveLocation = async (location: any) => {
     if (!user) return;
     setSubmitting(true);
     try {
-      // location.name = "accounts/xxx/locations/yyy"
-      // location.title = Business Name
-      await addDoc(collection(db, 'accounts'), {
-        userId: user.uid,
+      const { error } = await supabase.from('accounts').insert({
+        user_id: user.id,
         name: location.title || location.name,
-        locationId: location.name, // e.g. "accounts/12345/locations/67890"
-        gmbId: location.name.split('/').pop(),
+        location_id: location.name,
+        gmb_id: location.name.split('/').pop(),
         type: 'gmb_real',
-        createdAt: serverTimestamp(),
       });
+      if (error) throw error;
     } catch (err) {
       console.error('Error saving location:', err);
     } finally {
@@ -137,19 +144,19 @@ export function AccountsManager() {
     }
   };
 
-  // ─── Manual Add Account ────────────────────────────────────────────────────
   const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !formData.name || !formData.gmbId) return;
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'accounts'), {
-        userId: user.uid,
+      const { error } = await supabase.from('accounts').insert({
+        user_id: user.id,
         name: formData.name,
-        gmbId: formData.gmbId,
+        location_id: formData.gmbId,
+        gmb_id: formData.gmbId.split('/').pop(),
         type: 'manual',
-        createdAt: serverTimestamp(),
       });
+      if (error) throw error;
       setFormData({ name: '', gmbId: '' });
       setShowAddForm(false);
     } catch (err) {
@@ -162,7 +169,7 @@ export function AccountsManager() {
   const handleDeleteAccount = async (id: string) => {
     if (!window.confirm('Remove this GMB account link?')) return;
     try {
-      await deleteDoc(doc(db, 'accounts', id));
+      await supabase.from('accounts').delete().eq('id', id);
     } catch (err) {
       console.error('Delete failed:', err);
     }
@@ -172,8 +179,7 @@ export function AccountsManager() {
     if (!user || account.type !== 'gmb_real') return;
     setVerifying(account.id);
     try {
-      // Use gmb-locations to test the token
-      const locId = account.locationId || '';
+      const locId = account.location_id || '';
       const accountName = locId.includes('/locations/') ? locId.split('/locations/')[0] : '';
       
       if (!accountName) {
@@ -181,7 +187,7 @@ export function AccountsManager() {
         return;
       }
 
-      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.uid}&accountName=${accountName}`);
+      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.id}&accountName=${accountName}`);
       const data = await res.json();
       
       if (data.accounts || data.locations) {
@@ -198,7 +204,7 @@ export function AccountsManager() {
   };
 
   const isAlreadySaved = (location: any) =>
-    accounts.some((a) => a.locationId === location.name || a.gmbId === location.name.split('/').pop());
+    accounts.some((a) => a.location_id === location.name || a.gmb_id === location.name.split('/').pop());
 
   return (
     <div className="space-y-10">
@@ -239,24 +245,6 @@ export function AccountsManager() {
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
             <p className="text-emerald-400 font-bold text-sm">
               Google Business Profile connected! Select your locations below to add them.
-            </p>
-          </motion.div>
-        )}
-        {gmb_status === 'error' && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center gap-3"
-          >
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-            <p className="text-red-400 font-bold text-sm">
-              Connection failed. Please try again or check your Google Cloud OAuth setup.
-              {new URLSearchParams(window.location.search).get('details') && (
-                <span className="block mt-1 text-[10px] opacity-60 uppercase tracking-widest">
-                  Detail: {new URLSearchParams(window.location.search).get('details')}
-                </span>
-              )}
             </p>
           </motion.div>
         )}
@@ -332,21 +320,7 @@ export function AccountsManager() {
                   );
                 })}
               </div>
-            ) : (
-              <div className="py-8 text-center text-slate-500">
-                <MapPin className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                <p className="text-[10px] font-black uppercase tracking-widest">
-                  No locations found. Make sure you have GMB locations in your Google account.
-                </p>
-                <Button
-                  onClick={loadGmbLocations}
-                  className="mt-4 text-[10px] font-black uppercase tracking-widest"
-                  variant="ghost"
-                >
-                  Retry
-                </Button>
-              </div>
-            )}
+            ) : null}
           </motion.div>
         )}
       </AnimatePresence>
@@ -445,7 +419,7 @@ export function AccountsManager() {
                   <h3 className="text-xl font-black text-white italic truncate">{account.name}</h3>
                   <div className="flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-widest">
                     <Fingerprint className="w-3 h-3" />
-                    <span className="truncate">{account.locationId || account.gmbId || 'Manual'}</span>
+                    <span className="truncate">{account.location_id || account.gmb_id || 'Manual'}</span>
                   </div>
                 </div>
 

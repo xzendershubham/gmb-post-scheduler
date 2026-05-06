@@ -1,48 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
-
-function initAdmin() {
-  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!key) throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is missing');
-  const rawSa = JSON.parse(key);
-  const sa: Record<string, any> = {};
-  Object.keys(rawSa).forEach(k => {
-    sa[k.toLowerCase()] = rawSa[k];
-  });
-
-  const privateKey = sa.private_key
-    ? sa.private_key.replace(/\\n/g, '\n').replace(/\n/g, '\n').trim()
-    : '';
-
-  return admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: sa.project_id,
-      clientEmail: sa.client_email,
-      privateKey: privateKey,
-    }),
-  });
-}
+import { supabaseAdmin } from './supabase-client';
 
 async function getValidAccessToken(userId: string): Promise<string | null> {
-  const app = initAdmin();
-  const firestoreDbId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-4a3cb05f-57e2-4431-a235-8dc14579b508';
-  const db = app.firestore(firestoreDbId);
-  const userDoc = await db.collection('users').doc(userId).get();
-  const gmb = userDoc.data()?.gmb;
+  const { data: profile, error } = await supabaseAdmin
+    .from('profiles')
+    .select('gmb_refresh_token')
+    .eq('id', userId)
+    .single();
 
-  if (!gmb?.refreshToken) return null;
+  if (error || !profile?.gmb_refresh_token) return null;
 
-  // If token is still valid (with 60s buffer), use it
-  if (gmb.tokenExpiry && Date.now() < gmb.tokenExpiry - 60000) {
-    return gmb.accessToken;
-  }
-
-  // Refresh the token
+  // Always refresh for simplicity and reliability in serverless
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      refresh_token: gmb.refreshToken,
+      refresh_token: profile.gmb_refresh_token,
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
       grant_type: 'refresh_token',
@@ -50,15 +23,7 @@ async function getValidAccessToken(userId: string): Promise<string | null> {
   });
 
   const newTokens = await tokenRes.json();
-  if (!newTokens.access_token) return null;
-
-  // Update stored token
-  await db.collection('users').doc(userId).update({
-    'gmb.accessToken': newTokens.access_token,
-    'gmb.tokenExpiry': Date.now() + (newTokens.expires_in || 3600) * 1000,
-  });
-
-  return newTokens.access_token;
+  return newTokens.access_token || null;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

@@ -23,12 +23,11 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
-import { db } from '../lib/firebase';
-import { collection, addDoc, updateDoc, doc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthProvider';
 
-// Compress image to safe size for Firestore (<200KB base64)
-function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<string> {
+// Compress image to safe size (utility still useful for optimization)
+function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -45,7 +44,10 @@ function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<strin
         const ctx = canvas.getContext('2d');
         if (!ctx) return reject(new Error('Canvas not supported'));
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Compression failed'));
+        }, 'image/jpeg', quality);
       };
       img.onerror = reject;
       img.src = e.target?.result as string;
@@ -58,51 +60,63 @@ function compressImage(file: File, maxWidth = 800, quality = 0.7): Promise<strin
 type PostType = 'STANDARD' | 'EVENT' | 'OFFER';
 type ActionType = 'LEARN_MORE' | 'BOOK' | 'ORDER' | 'SHOP' | 'SIGN_UP' | 'CALL';
 
-export function PostComposer({ initialData, onCancel, onSuccess, selectedAccountId }: { initialData?: any, onCancel?: () => void, onSuccess?: () => void, selectedAccountId?: string }) {
+interface PostComposerProps {
+  initialData?: any;
+  onCancel?: () => void;
+  onSuccess?: () => void;
+  selectedAccountId?: string;
+}
+
+export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCancel, onSuccess, selectedAccountId }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [postType, setPostType] = useState<PostType>(initialData?.postType || 'STANDARD');
+  const [postType, setPostType] = useState<PostType>(initialData?.post_type || 'STANDARD');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   
   const [formData, setFormData] = useState({
     summary: initialData?.summary || '',
-    accountId: initialData?.accountId || (selectedAccountId !== 'all' ? selectedAccountId : ''),
-    imageUrl: initialData?.imageUrl || '',
-    actionType: (initialData?.ctaType || 'LEARN_MORE') as ActionType,
-    actionUrl: initialData?.ctaUrl || '',
+    accountId: initialData?.account_id || (selectedAccountId !== 'all' ? selectedAccountId : ''),
+    imageUrl: initialData?.image_url || '',
+    actionType: (initialData?.cta_type || 'LEARN_MORE') as ActionType,
+    actionUrl: initialData?.cta_url || '',
     // Event/Offer specific
-    eventTitle: initialData?.eventTitle || '',
-    startDate: initialData?.startTime ? format(new Date(initialData.startTime), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-    startTime: initialData?.startTime ? format(new Date(initialData.startTime), 'HH:mm') : '09:00',
-    endDate: initialData?.endTime ? format(new Date(initialData.endTime), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-    endTime: initialData?.endTime ? format(new Date(initialData.endTime), 'HH:mm') : '17:00',
+    eventTitle: initialData?.event_title || '',
+    startDate: initialData?.start_time ? format(new Date(initialData.start_time), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+    startTime: initialData?.start_time ? format(new Date(initialData.start_time), 'HH:mm') : '09:00',
+    endDate: initialData?.end_time ? format(new Date(initialData.end_time), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+    endTime: initialData?.end_time ? format(new Date(initialData.end_time), 'HH:mm') : '17:00',
     // Offer specific
-    couponCode: initialData?.offerCoupon || '',
-    redeemUrl: initialData?.offerUrl || '',
-    terms: initialData?.offerTerms || '',
+    couponCode: initialData?.offer_coupon || '',
+    redeemUrl: initialData?.offer_url || '',
+    terms: initialData?.offer_terms || '',
     // Scheduling
-    scheduledDate: initialData?.scheduledAt ? format(new Date(initialData.scheduledAt), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-    scheduledTime: initialData?.scheduledAt ? format(new Date(initialData.scheduledAt), 'HH:mm') : '12:00',
+    scheduledDate: initialData?.scheduled_at ? format(new Date(initialData.scheduled_at), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+    scheduledTime: initialData?.scheduled_at ? format(new Date(initialData.scheduled_at), 'HH:mm') : '12:00',
   });
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'accounts'), where('userId', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAccounts(fetched);
-      if (fetched.length > 0 && !formData.accountId) {
-        setFormData(f => ({ ...f, accountId: fetched[0].id }));
+    const fetchAccounts = async () => {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (!error) {
+        setAccounts(data || []);
+        if (data.length > 0 && !formData.accountId) {
+          setFormData(f => ({ ...f, accountId: data[0].id }));
+        }
       }
       setLoadingAccounts(false);
-    });
-    return () => unsubscribe();
+    };
+    fetchAccounts();
   }, [user]);
 
-  const [imagePreview, setImagePreview] = useState<string | null>(initialData?.imageUrl || null);
+  const [imagePreview, setImagePreview] = useState<string | null>(initialData?.image_url || null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -110,7 +124,6 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
       setSelectedFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        // Only use base64 for PREVIEW
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
@@ -123,7 +136,6 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
     setLoading(true);
     
     try {
-      // Parse dates robustly
       const createSafeISO = (dateStr: string, timeStr: string) => {
         try {
           const combined = `${dateStr}T${timeStr}`;
@@ -131,7 +143,7 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
           if (isNaN(date.getTime())) throw new Error('Invalid Date');
           return date.toISOString();
         } catch (e) {
-          return new Date().toISOString(); // Fallback
+          return new Date().toISOString();
         }
       };
 
@@ -139,53 +151,54 @@ export function PostComposer({ initialData, onCancel, onSuccess, selectedAccount
       const startTime = createSafeISO(formData.startDate, formData.startTime);
       const endTime = createSafeISO(formData.endDate, formData.endTime);
 
-      let finalImageUrl = '';
+      let finalImageUrl = formData.imageUrl;
 
-      // Compress image client-side and store as small base64
       if (selectedFile) {
-        try {
-          const compressed = await compressImage(selectedFile, 800, 0.7);
-          // Compressed JPEG should be well under 200KB - safe for Firestore
-          finalImageUrl = compressed;
-        } catch (compressError) {
-          console.error('Image compression failed:', compressError);
-          // Continue without image
-          finalImageUrl = '';
-        }
-      } else if (formData.imageUrl && !formData.imageUrl.startsWith('data:')) {
-        // Only use URL if it's a real URL (not base64)
-        finalImageUrl = formData.imageUrl;
+        // Upload to Supabase Storage
+        const fileExt = selectedFile.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExt}`;
+        const filePath = `${user.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('posts')
+          .upload(filePath, selectedFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('posts')
+          .getPublicUrl(filePath);
+        
+        finalImageUrl = publicUrl;
       }
 
       const selectedAccount = accounts.find(a => a.id === formData.accountId);
 
       const postData = {
-        userId: user.uid,
-        accountId: formData.accountId,
-        accountName: selectedAccount?.name || 'Unknown Account',
-        postType: postType,
+        user_id: user.id,
+        account_id: formData.accountId,
+        account_name: selectedAccount?.name || 'Unknown Account',
+        post_type: postType,
         summary: formData.summary,
-        imageUrl: finalImageUrl,
-        ctaType: formData.actionType,
-        ctaUrl: formData.actionUrl,
-        eventTitle: postType !== 'STANDARD' ? formData.eventTitle : null,
-        startTime: postType !== 'STANDARD' ? startTime : null,
-        endTime: postType !== 'STANDARD' ? endTime : null,
-        offerCoupon: postType === 'OFFER' ? formData.couponCode : null,
-        offerUrl: postType === 'OFFER' ? formData.redeemUrl : null,
-        offerTerms: postType === 'OFFER' ? formData.terms : null,
-        scheduledAt: scheduledAt,
+        image_url: finalImageUrl,
+        cta_type: formData.actionType,
+        cta_url: formData.actionUrl,
+        event_title: postType !== 'STANDARD' ? formData.eventTitle : null,
+        start_time: postType !== 'STANDARD' ? startTime : null,
+        end_time: postType !== 'STANDARD' ? endTime : null,
+        offer_coupon: postType === 'OFFER' ? formData.couponCode : null,
+        offer_url: postType === 'OFFER' ? formData.redeemUrl : null,
+        offer_terms: postType === 'OFFER' ? formData.terms : null,
+        scheduled_at: scheduledAt,
         status: initialData?.status || 'SCHEDULED',
-        updatedAt: serverTimestamp(),
       };
 
       if (initialData?.id) {
-        await updateDoc(doc(db, 'posts', initialData.id), postData);
+        const { error } = await supabase.from('posts').update(postData).eq('id', initialData.id);
+        if (error) throw error;
       } else {
-        await addDoc(collection(db, 'posts'), {
-          ...postData,
-          createdAt: serverTimestamp(),
-        });
+        const { error } = await supabase.from('posts').insert(postData);
+        if (error) throw error;
       }
 
       setShowSuccess(true);

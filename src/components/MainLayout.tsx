@@ -13,8 +13,7 @@ import {
   Search,
   Globe
 } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { useAuth } from './AuthProvider';
 import { Button } from './ui/button';
@@ -44,12 +43,39 @@ export function MainLayout({ children, activeTab, setActiveTab, selectedAccountI
 
   React.useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'accounts'), where('userId', '==', user.uid));
-    return onSnapshot(q, (snapshot) => {
-      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAccounts(fetched);
-    });
+    
+    const fetchAccounts = async () => {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('user_id', user.id);
+      
+      if (!error) {
+        setAccounts(data || []);
+      }
+    };
+
+    fetchAccounts();
+
+    const channel = supabase
+      .channel('layout_accounts')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'accounts',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        fetchAccounts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
+
+  const avatarUrl = user?.user_metadata?.avatar_url;
+  const fullName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Operator';
 
   return (
     <div className="flex h-screen bg-[#0f172a] text-slate-300 overflow-hidden font-sans">
@@ -92,11 +118,11 @@ export function MainLayout({ children, activeTab, setActiveTab, selectedAccountI
         <div className="p-6 border-t border-slate-800/60 mt-auto">
           <div className="flex items-center gap-3">
             <Avatar className="w-9 h-9 border border-slate-700/50">
-              <AvatarImage src={user?.photoURL || ''} />
-              <AvatarFallback className="bg-slate-800 text-[10px]">{user?.displayName?.charAt(0) || user?.email?.charAt(0) || 'U'}</AvatarFallback>
+              <AvatarImage src={avatarUrl} />
+              <AvatarFallback className="bg-slate-800 text-[10px]">{fullName.charAt(0)}</AvatarFallback>
             </Avatar>
             <div className="flex-1 overflow-hidden">
-              <p className="text-sm font-semibold text-white truncate">{user?.displayName || user?.email?.split('@')[0] || 'Operator'}</p>
+              <p className="text-sm font-semibold text-white truncate">{fullName}</p>
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active Session</p>
             </div>
             <Button 
@@ -174,7 +200,7 @@ export function MainLayout({ children, activeTab, setActiveTab, selectedAccountI
               className="w-full max-w-[280px] h-full bg-[#1e293b] flex flex-col"
             >
               <div className="p-6 flex items-center justify-between">
-                <span className="font-bold text-xl text-glow text-white">PostPilot</span>
+                <span className="font-bold text-xl text-glow text-white">PostFlow</span>
                 <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(false)}>
                   <X className="w-6 h-6 text-slate-400" />
                 </Button>

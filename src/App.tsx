@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { updateProfile } from 'firebase/auth';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import { MainLayout } from './components/MainLayout';
 import { Dashboard } from './components/Dashboard';
@@ -45,45 +44,19 @@ function AppContent() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
-    // Read from ref to always get the current mode (avoids stale closure)
     const currentMode = authMode.current;
     setAuthLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
       if (currentMode === 'signup') {
-        const result = await signUpWithEmail(email, password);
-        // Optionally update display name
-        if (displayName && result?.user) {
-          await updateProfile(result.user, { displayName });
-        }
-        setSuccessMessage('Account created! You are now logged in.');
+        await signUpWithEmail(email, password);
+        setSuccessMessage('Account created! Please check your email for verification if enabled.');
       } else {
         await signInWithEmail(email, password);
       }
     } catch (err: any) {
-      const code = err?.code || '';
-      let msg = 'Authentication failed. Please try again.';
-      if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
-        msg = currentMode === 'login'
-          ? 'Wrong email or password. Please check your credentials and try again.'
-          : 'Authentication failed. Please try again.';
-      } else if (code === 'auth/email-already-in-use') {
-        msg = 'An account with this email already exists. Click "Already have an account? Sign In" to log in.';
-        setMode('login');
-        authMode.current = 'login';
-      } else if (code === 'auth/weak-password') {
-        msg = 'Password must be at least 6 characters.';
-      } else if (code === 'auth/invalid-email') {
-        msg = 'Please enter a valid email address.';
-      } else if (code === 'auth/too-many-requests') {
-        msg = 'Too many attempts. Please wait a few minutes and try again.';
-      } else if (code === 'auth/operation-not-allowed') {
-        msg = 'Email/Password sign-in is not enabled. Please contact support.';
-      } else if (err?.message) {
-        msg = err.message;
-      }
-      setErrorMessage(msg);
+      setErrorMessage(err.message || 'Authentication failed.');
     } finally {
       setAuthLoading(false);
     }
@@ -109,7 +82,6 @@ function AppContent() {
   if (!user) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Background Decorative Elements */}
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full" />
         
@@ -154,21 +126,6 @@ function AppContent() {
                 {errorMessage}
               </motion.div>
             )}
-            {mode === 'signup' && (
-              <div className="space-y-2">
-                <Label className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Full Name (Optional)</Label>
-                <div className="relative">
-                  <ArrowRight className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <Input 
-                    type="text" 
-                    placeholder="Your Name" 
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="bg-[#020617]/50 border-slate-800 h-14 pl-12 rounded-2xl text-white focus:ring-1 focus:ring-blue-500/30"
-                  />
-                </div>
-              </div>
-            )}
             <div className="space-y-2">
               <Label className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px] ml-1">Email Address</Label>
               <div className="relative">
@@ -180,7 +137,6 @@ function AppContent() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="bg-[#020617]/50 border-slate-800 h-14 pl-12 rounded-2xl text-white focus:ring-1 focus:ring-blue-500/30"
                   required
-                  autoComplete={mode === 'login' ? 'email' : 'new-email'}
                 />
               </div>
             </div>
@@ -190,12 +146,11 @@ function AppContent() {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <Input 
                   type={showPassword ? 'text' : 'password'} 
-                  placeholder={mode === 'signup' ? 'Min. 6 characters' : '••••••••'} 
+                  placeholder="••••••••" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-[#020617]/50 border-slate-800 h-14 pl-12 pr-12 rounded-2xl text-white focus:ring-1 focus:ring-blue-500/30"
                   required
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 />
                 <button
                   type="button"
@@ -245,11 +200,7 @@ function AppContent() {
                   try {
                     await signInWithGoogle();
                   } catch (err: any) {
-                    const code = err?.code || '';
-                    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-                      return; // User closed popup, not an error
-                    }
-                    setErrorMessage(err?.message || 'Google sign-in failed. Please try again.');
+                    setErrorMessage(err?.message || 'Google sign-in failed.');
                   }
                 }}
                 type="button"
@@ -259,26 +210,7 @@ function AppContent() {
                 Connect via Google
              </Button>
           </div>
-
-          <div className="grid grid-cols-3 gap-6 pt-8 border-t border-white/5">
-             <div className="flex flex-col items-center gap-1">
-                <LayoutDashboard className="w-4 h-4 text-blue-500" />
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">RAW TOOLS</span>
-             </div>
-             <div className="flex flex-col items-center gap-1">
-                <Globe className="w-4 h-4 text-emerald-500" />
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">DIRECT SYNC</span>
-             </div>
-             <div className="flex flex-col items-center gap-1">
-                <ShieldCheck className="w-4 h-4 text-purple-500" />
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">VERIFIED</span>
-             </div>
-          </div>
         </motion.div>
-
-        <div className="mt-12 text-slate-500 text-[10px] font-bold tracking-[0.3em] uppercase">
-          &copy; 2026 POSTFLOW
-        </div>
       </div>
     );
   }
