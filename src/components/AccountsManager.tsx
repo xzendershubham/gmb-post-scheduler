@@ -24,6 +24,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthProvider';
 
 const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
+// Use port 3001 directly for API calls locally to avoid proxy issues
+const API_URL = APP_URL.includes('localhost:3000') ? 'http://localhost:3001' : APP_URL;
 
 export function AccountsManager() {
   const { user } = useAuth();
@@ -116,7 +118,7 @@ export function AccountsManager() {
   // ─── Connect Real GMB (OAuth) ──────────────────────────────────────────────
   const handleConnectGMB = () => {
     if (!user) return;
-    const oauthUrl = `${APP_URL}/api/gmb-auth?userId=${user.id}`;
+    const oauthUrl = `${API_URL}/api/gmb-auth?userId=${user.id}`;
     window.location.href = oauthUrl;
   };
 
@@ -125,7 +127,7 @@ export function AccountsManager() {
     if (!user) return;
     setLoadingLocations(true);
     try {
-      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.id}`);
+      const res = await fetch(`${API_URL}/api/gmb-locations?userId=${user.id}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
@@ -138,7 +140,7 @@ export function AccountsManager() {
         for (const acct of data.accounts) {
           try {
             const locRes = await fetch(
-              `${APP_URL}/api/gmb-locations?userId=${user.id}&accountName=${acct.name}`
+              `${API_URL}/api/gmb-locations?userId=${user.id}&accountName=${acct.name}`
             );
             const locData = await locRes.json();
             if (locData.locations) {
@@ -225,7 +227,7 @@ export function AccountsManager() {
         return;
       }
 
-      const res = await fetch(`${APP_URL}/api/gmb-locations?userId=${user.id}&accountName=${accountName}`);
+      const res = await fetch(`${API_URL}/api/gmb-locations?userId=${user.id}&accountName=${accountName}`);
       const data = await res.json();
       
       if (data.accounts || data.locations) {

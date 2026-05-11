@@ -17,6 +17,9 @@ import { useAuth } from './AuthProvider';
 import { supabase } from '../lib/supabase';
 import { format, formatDistanceToNow } from 'date-fns';
 
+const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
+const API_URL = APP_URL.includes('localhost:3000') ? 'http://localhost:3001' : APP_URL;
+
 export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post: any) => void, selectedAccountId: string }) {
   const { user } = useAuth();
   const [allPosts, setAllPosts] = useState<any[]>([]);
@@ -71,7 +74,7 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
 
     setSyncing(true);
     try {
-      const res = await fetch(`/api/publish-posts?userId=${user.id}&secret=${secret}`);
+      const res = await fetch(`${API_URL}/api/publish-posts?userId=${user.id}&secret=${secret}`);
       const data = await res.json();
       if (data.ok) {
         alert(`Sync Complete! Published: ${data.published}, Failed: ${data.failed}, Skipped: ${data.skipped}`);
