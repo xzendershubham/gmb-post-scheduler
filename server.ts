@@ -1,10 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Load environment variables
-dotenv.config();
+// Load environment variables (handled by top-level import)
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

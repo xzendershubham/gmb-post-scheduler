@@ -130,14 +130,31 @@ export function AccountsManager() {
       if (data.error) throw new Error(data.error);
 
       setGmbAccounts(data.accounts || []);
-
+      
       if (data.accounts?.length > 0) {
-        const acctName = data.accounts[0].name;
-        const locRes = await fetch(
-          `${APP_URL}/api/gmb-locations?userId=${user.id}&accountName=${acctName}`
-        );
-        const locData = await locRes.json();
-        setGmbLocations(locData.locations || []);
+        // Fetch locations for ALL accounts and combine them
+        const allLocations = [];
+        
+        for (const acct of data.accounts) {
+          try {
+            const locRes = await fetch(
+              `${APP_URL}/api/gmb-locations?userId=${user.id}&accountName=${acct.name}`
+            );
+            const locData = await locRes.json();
+            if (locData.locations) {
+              // Add account info to each location for clarity
+              const locationsWithAcct = locData.locations.map((l: any) => ({
+                ...l,
+                accountTitle: acct.accountName || acct.name
+              }));
+              allLocations.push(...locationsWithAcct);
+            }
+          } catch (e) {
+            console.error(`Failed to load locations for account ${acct.name}:`, e);
+          }
+        }
+        
+        setGmbLocations(allLocations);
       }
     } catch (err: any) {
       console.error('Error loading GMB locations:', err);
