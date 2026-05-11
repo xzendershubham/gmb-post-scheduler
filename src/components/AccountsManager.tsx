@@ -42,8 +42,9 @@ export function AccountsManager() {
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [isGmbConnected, setIsGmbConnected] = useState(false);
   const [gmb_status, setGmbStatus] = useState<'idle' | 'connected' | 'error'>('idle');
+  const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
 
-  // Check URL params on load (callback from OAuth)
+  // Check URL params and existing profile on load
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('gmb_connected') === 'true') {
@@ -54,7 +55,27 @@ export function AccountsManager() {
     if (params.get('gmb_error')) {
       setGmbStatus('error');
     }
-  }, []);
+
+    // Check profile for existing token
+    if (user) {
+      const checkProfile = async () => {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('gmb_refresh_token, email')
+          .eq('id', user.id)
+          .single();
+        
+        if (!error && data?.gmb_refresh_token) {
+          setIsGmbConnected(true);
+          setConnectedEmail(data.email);
+          if (gmbLocations.length === 0) {
+            loadGmbLocations();
+          }
+        }
+      };
+      checkProfile();
+    }
+  }, [user]);
 
   // Listen to user's accounts in Supabase
   useEffect(() => {
@@ -235,17 +256,27 @@ export function AccountsManager() {
 
       {/* GMB OAuth Status */}
       <AnimatePresence>
-        {gmb_status === 'connected' && (
+        {(gmb_status === 'connected' || (isGmbConnected && connectedEmail)) && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-3"
+            className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between gap-3"
           >
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-            <p className="text-emerald-400 font-bold text-sm">
-              Google Business Profile connected! Select your locations below to add them.
-            </p>
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              <p className="text-emerald-400 font-bold text-sm">
+                Google Business Profile connected {connectedEmail ? `as ${connectedEmail}` : ''}
+              </p>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleConnectGMB}
+              className="text-[10px] font-black uppercase tracking-widest text-emerald-400 hover:bg-emerald-500/10"
+            >
+              Change Account
+            </Button>
           </motion.div>
         )}
       </AnimatePresence>

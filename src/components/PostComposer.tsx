@@ -133,6 +133,10 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
 
   const handleSubmit = async () => {
     if (!user) return;
+    if (!formData.accountId) {
+      alert('Please select a target account first.');
+      return;
+    }
     setLoading(true);
     
     try {

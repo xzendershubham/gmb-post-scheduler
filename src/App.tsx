@@ -24,7 +24,7 @@ function AppContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedAccountId, setSelectedAccountId] = useState('all');
+  const [selectedAccountId, setSelectedAccountId] = useState(() => localStorage.getItem('postflow_selected_account') || 'all');
 
   useEffect(() => {
     if (!user) {
@@ -40,6 +40,10 @@ function AppContent() {
       setEditingPost(null);
     }
   }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem('postflow_selected_account', selectedAccountId);
+  }, [selectedAccountId]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();

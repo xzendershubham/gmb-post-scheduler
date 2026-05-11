@@ -34,18 +34,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.redirect(`${appUrl}?gmb_error=token_failed`);
     }
 
-    // Step 2: Store refresh token in Supabase Profile
-    if (tokens.refresh_token) {
-       const { error: dbError } = await supabaseAdmin
-        .from('profiles')
-        .update({ 
-          gmb_refresh_token: tokens.refresh_token,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId as string);
+    // Step 2: Fetch User Info (Email)
+    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const userData = await userRes.json();
+    const gmbEmail = userData.email;
 
-      if (dbError) throw dbError;
+    // Step 3: Store refresh token and email in Supabase Profile
+    const updateData: any = { 
+      updated_at: new Date().toISOString() 
+    };
+    
+    if (tokens.refresh_token) {
+      updateData.gmb_refresh_token = tokens.refresh_token;
     }
+    
+    if (gmbEmail) {
+      updateData.email = gmbEmail;
+    }
+
+    const { error: dbError } = await supabaseAdmin
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId as string);
+
+    if (dbError) throw dbError;
 
     // Redirect back to app with success signal
     res.redirect(`${appUrl}?gmb_connected=true`);
