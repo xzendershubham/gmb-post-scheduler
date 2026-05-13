@@ -467,7 +467,6 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
                 )}
               </div>
             </div>
-          </div>
 
           <Button 
             disabled={loading || !formData.summary}
