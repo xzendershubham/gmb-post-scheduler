@@ -94,7 +94,8 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
     terms: initialData?.offer_terms || '',
     // Scheduling
     scheduledDate: initialData?.scheduled_at ? format(new Date(initialData.scheduled_at), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-    scheduledTime: initialData?.scheduled_at ? format(new Date(initialData.scheduled_at), 'HH:mm') : '12:00',
+    scheduledTime: initialData?.scheduled_at ? format(new Date(initialData.scheduled_at), 'HH:mm') : format(new Date(), 'HH:mm'),
+    publishNow: false,
   });
 
   useEffect(() => {
@@ -151,7 +152,9 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
         }
       };
 
-      const scheduledAt = createSafeISO(formData.scheduledDate, formData.scheduledTime);
+      const scheduledAt = formData.publishNow 
+        ? new Date().toISOString() 
+        : createSafeISO(formData.scheduledDate, formData.scheduledTime);
       const startTime = createSafeISO(formData.startDate, formData.startTime);
       const endTime = createSafeISO(formData.endDate, formData.endTime);
 
@@ -194,7 +197,7 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
         offer_url: postType === 'OFFER' ? formData.redeemUrl : null,
         offer_terms: postType === 'OFFER' ? formData.terms : null,
         scheduled_at: scheduledAt,
-        status: initialData?.status || 'SCHEDULED',
+        status: 'SCHEDULED', // Always reset to SCHEDULED when saving/updating to ensure it enters the pipeline
       };
 
       if (initialData?.id) {
@@ -434,29 +437,34 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
           )}
 
           {/* Master Scheduling Module */}
-          <div className="space-y-4 pt-8 border-t border-slate-800">
-            <div className="flex items-center gap-2 mb-2">
-               <Bell className="w-4 h-4 text-blue-500" />
-               <Label className="text-slate-400 font-bold uppercase tracking-[0.2em] text-[10px]">Platform Sync Schedule</Label>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sync Date</p>
-                 <Input 
-                  type="date" 
-                  value={formData.scheduledDate}
-                  onChange={(e) => setFormData(f => ({ ...f, scheduledDate: e.target.value }))}
-                  className="bg-blue-600/5 border-blue-500/20 h-14 rounded-2xl text-slate-200"
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 bg-[#020617]/50 p-4 rounded-2xl border border-slate-800">
+                <input 
+                  type="checkbox" 
+                  id="publishNow"
+                  checked={formData.publishNow}
+                  onChange={(e) => setFormData(f => ({ ...f, publishNow: e.target.checked }))}
+                  className="w-5 h-5 rounded-lg border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/20"
                 />
+                <label htmlFor="publishNow" className="text-xs font-bold text-slate-300 uppercase tracking-widest cursor-pointer">Publish Immediately</label>
               </div>
-              <div className="space-y-2">
-                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Sync Time</p>
-                 <Input 
-                  type="time" 
-                  value={formData.scheduledTime}
-                  onChange={(e) => setFormData(f => ({ ...f, scheduledTime: e.target.value }))}
-                  className="bg-blue-600/5 border-blue-500/20 h-14 rounded-2xl text-slate-200"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                {!formData.publishNow && (
+                  <>
+                    <Input 
+                      type="date" 
+                      value={formData.scheduledDate}
+                      onChange={(e) => setFormData(f => ({ ...f, scheduledDate: e.target.value }))}
+                      className="bg-blue-600/5 border-blue-500/20 h-14 rounded-2xl text-slate-200"
+                    />
+                    <Input 
+                      type="time" 
+                      value={formData.scheduledTime}
+                      onChange={(e) => setFormData(f => ({ ...f, scheduledTime: e.target.value }))}
+                      className="bg-blue-600/5 border-blue-500/20 h-14 rounded-2xl text-slate-200"
+                    />
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -466,7 +474,7 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
             onClick={handleSubmit}
             className="w-full h-16 accent-gradient text-white rounded-2xl shadow-2xl shadow-blue-500/30 border-none font-black text-xs uppercase tracking-[0.3em] transition-all hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50"
           >
-            {loading ? 'Initializing Sync...' : 'Schedule Production →'}
+            {loading ? 'Processing...' : (initialData ? 'Update Pipeline Entry →' : 'Schedule Production →')}
           </Button>
         </div>
       </div>

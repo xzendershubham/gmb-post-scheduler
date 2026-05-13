@@ -89,7 +89,9 @@ async function publishToGMB(post: any, accessToken: string, locationId: string) 
 
 // ─── Main Handler ────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const secret = req.headers['x-cron-secret'] || req.query.secret || bearerToken;
   const manualUserId = req.query.userId as string;
 
   if (secret !== process.env.CRON_SECRET) {

@@ -35,4 +35,26 @@ app.get('/api/health', (req, res) => {
 
 app.listen(port, () => {
   console.log(`API server listening at http://localhost:${port}`);
+  
+  // Local Cron: Run publishPosts every 10 minutes
+  const CRON_INTERVAL = 10 * 60 * 1000;
+  console.log(`Local sync cron initialized. Interval: ${CRON_INTERVAL / 60000} minutes.`);
+  
+  setInterval(async () => {
+    console.log('Running local sync cron...');
+    try {
+      // Mock request/response for the handler
+      const mockReq = { 
+        headers: { 'x-cron-secret': process.env.CRON_SECRET },
+        query: {} 
+      };
+      const mockRes = {
+        status: (code: number) => ({ json: (o: any) => console.log(`Cron Status ${code}:`, o) }),
+        json: (o: any) => console.log('Cron Result:', o)
+      };
+      await publishPosts(mockReq as any, mockRes as any);
+    } catch (err) {
+      console.error('Local cron failed:', err);
+    }
+  }, CRON_INTERVAL);
 });

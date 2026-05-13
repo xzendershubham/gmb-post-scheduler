@@ -99,24 +99,32 @@ export function Dashboard({ onEditPost, selectedAccountId }: { onEditPost: (post
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Main Feed */}
         <div className="lg:col-span-12 glass rounded-[32px] overflow-hidden border-white/5 shadow-2xl">
-          <div className="flex items-center justify-between p-8 border-b border-white/5">
-            <h2 className="text-lg font-bold text-white flex items-center gap-3 uppercase tracking-[0.2em] italic">
-              <TrendingUp className="w-5 h-5 text-blue-500" />
-              Production Pipeline
-            </h2>
+          <div className="flex flex-col md:flex-row items-center justify-between p-8 border-b border-white/5 gap-6">
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white flex items-center gap-3 uppercase tracking-[0.2em] italic">
+                <TrendingUp className="w-5 h-5 text-blue-500" />
+                Production Pipeline
+              </h2>
+              {pipelinePosts.some(p => p.status === 'SCHEDULED' && new Date(p.scheduled_at) <= new Date()) && (
+                <p className="text-[10px] text-orange-400 font-bold uppercase animate-pulse flex items-center gap-2">
+                  <AlertTriangle className="w-3 h-3" />
+                  Due posts detected. Run Sync Pipeline to publish.
+                </p>
+              )}
+            </div>
             <div className="flex items-center gap-4">
                <Button 
                 onClick={handleSync} 
                 disabled={syncing}
                 variant="outline" 
-                className="h-10 px-4 rounded-xl border-blue-500/30 bg-blue-500/5 text-blue-400 font-bold text-[10px] uppercase tracking-widest hover:bg-blue-500/10 transition-all flex items-center gap-2"
+                className="h-10 px-4 rounded-xl border-blue-500/30 bg-blue-500/5 text-blue-400 font-bold text-[10px] uppercase tracking-widest hover:bg-blue-500/10 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/5"
                >
                  {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                 Sync Pipeline
+                 Run Manual Sync
                </Button>
-               <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Live Sync Enabled</span>
+               <div className="hidden sm:flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                  <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Live Agent Active</span>
                </div>
             </div>
           </div>

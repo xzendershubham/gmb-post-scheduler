@@ -55,20 +55,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // If accountName provided, fetch locations for that account
     if (accountName) {
+      console.log(`Fetching locations for account: ${accountName}`);
       const locRes = await fetch(
-        `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress,websiteUri`,
+        `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       const locData = await locRes.json().catch(() => ({ error: 'Invalid JSON response from Google' }));
+      console.log(`Google locations response for ${accountName}:`, JSON.stringify(locData).substring(0, 500));
       return res.json({ locations: locData.locations || [], error: locData.error });
     }
 
     // Otherwise, fetch all GMB accounts
+    console.log(`Fetching GMB accounts for user: ${userId}`);
     const accountsRes = await fetch(
       'https://mybusinessaccountmanagement.googleapis.com/v1/accounts',
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     const accountsData = await accountsRes.json().catch(() => ({}));
+    console.log(`Google accounts response:`, JSON.stringify(accountsData));
     res.json({ accounts: accountsData.accounts || [] });
   } catch (err: any) {
     console.error('GMB locations error:', err);
