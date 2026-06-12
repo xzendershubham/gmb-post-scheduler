@@ -72,8 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { error: dbError } = await supabaseAdmin
       .from('profiles')
-      .update(updateData)
-      .eq('id', userId as string);
+      .upsert({ id: userId as string, ...updateData });
 
     if (dbError) {
       console.error('Database update error:', dbError);

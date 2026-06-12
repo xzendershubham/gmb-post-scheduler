@@ -92,9 +92,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = req.headers['authorization'];
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
   const secret = req.headers['x-cron-secret'] || req.query.secret || bearerToken;
-  const manualUserId = req.query.userId as string;
+  let manualUserId = req.query.userId as string;
 
-  if (secret !== process.env.CRON_SECRET) {
+  let isAuthorized = false;
+
+  if (secret === process.env.CRON_SECRET) {
+    isAuthorized = true;
+  } else if (bearerToken) {
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(bearerToken);
+    if (!error && user) {
+      isAuthorized = true;
+      manualUserId = user.id; // Force sync only for this user
+    }
+  }
+
+  if (!isAuthorized) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

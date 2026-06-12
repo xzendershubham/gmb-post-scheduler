@@ -36,8 +36,8 @@ app.get('/api/health', (req, res) => {
 app.listen(port, () => {
   console.log(`API server listening at http://localhost:${port}`);
   
-  // Local Cron: Run publishPosts every 10 minutes
-  const CRON_INTERVAL = 10 * 60 * 1000;
+  // Local Cron: Run publishPosts every 5 minutes
+  const CRON_INTERVAL = 5 * 60 * 1000;
   console.log(`Local sync cron initialized. Interval: ${CRON_INTERVAL / 60000} minutes.`);
   
   setInterval(async () => {

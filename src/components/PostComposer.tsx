@@ -208,6 +208,27 @@ export const PostComposer: React.FC<PostComposerProps> = ({ initialData, onCance
         if (error) throw error;
       }
 
+      // Trigger instant publish if needed
+      const isPastOrNow = new Date(scheduledAt).getTime() <= Date.now() + 60000;
+      if (formData.publishNow || isPastOrNow) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            const API_URL = import.meta.env.VITE_APP_URL?.includes('localhost:3000') 
+              ? 'http://localhost:3001' 
+              : (import.meta.env.VITE_APP_URL || window.location.origin);
+              
+            await fetch(`${API_URL}/api/publish-posts?userId=${user.id}`, {
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Instant publish trigger failed, cron will handle it:', e);
+        }
+      }
+
       setShowSuccess(true);
     } catch (error: any) {
       console.error('Operation failed:', error);

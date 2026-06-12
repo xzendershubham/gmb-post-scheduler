@@ -173,7 +173,6 @@ export function AccountsManager() {
         user_id: user.id,
         name: location.title || location.name,
         location_id: location.name,
-        gmb_id: location.name.split('/').pop(),
         type: 'gmb_real',
       });
       if (error) throw error;
@@ -193,7 +192,6 @@ export function AccountsManager() {
         user_id: user.id,
         name: formData.name,
         location_id: formData.gmbId,
-        gmb_id: formData.gmbId.split('/').pop(),
         type: 'manual',
       });
       if (error) throw error;
